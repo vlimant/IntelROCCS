@@ -11,18 +11,16 @@ import os
 
 # package modules
 from cuadrnt.utils.config import get_config
-from cuadrnt.tools.sites import SiteManager
-#from cuadrnt.tools.datasets import DatasetManager
+from cuadrnt.data_management.tools.sites import SiteManager
+from cuadrnt.data_management.tools.datasets import DatasetManager
 
 # get local config file
 opt_path = os.path.join(os.path.split(os.path.dirname(os.path.realpath(__file__)))[0], 'etc')
 
-#@unittest.skip("Skip Test")
+@unittest.skip("Skip Test")
 class ToolsTests(unittest.TestCase):
     """
     A test class for tools classes
-    Not strictly used as unittests as results are not checked here
-    but rather used to run program and see if it crashes and check results manually after
     """
     def setUp(self):
         "Set up for test"
@@ -33,18 +31,23 @@ class ToolsTests(unittest.TestCase):
         pass
 
     #@unittest.skip("Skip Test")
-    def test_managers(self):
+    def test_sites(self):
         "Test managers"
         print ""
         sites = SiteManager(config=self.config)
-        #datasets = DatasetManager(config=self.config)
-        #sites.update_db()
-        #datasets.update_db()
+        sites.initiate_db()
         sites.update_cpu()
-        available_sites = sites.get_available_sites()
-        for site_name in available_sites:
-            performance = sites.get_performance(site_name)
-            print site_name, " : ", performance
+        sites.update_db()
+        # test different functions
+
+    #@unittest.skip("Skip Test")
+    def test_datasets(self):
+        "Test managers"
+        print ""
+        datasets = DatasetManager(config=self.config)
+        datasets.initiate_db()
+        datasets.update_db()
+        # test different functions
 
 if __name__ == '__main__':
     unittest.main()

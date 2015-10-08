@@ -8,14 +8,14 @@ Description: Maintain a mongodb instance which is used for caching data, store c
 # system modules
 import logging
 import datetime
+from subprocess import call
 from pymongo import MongoClient, ASCENDING
 from pymongo.errors import ServerSelectionTimeoutError, DocumentTooLarge, AutoReconnect, BulkWriteError
-from subprocess import call
 
 # package modules
-from cuadrnt.utils.db_utils import get_object_id
 from cuadrnt.utils.utils import datetime_day
 from cuadrnt.utils.utils import datetime_remove_timezone
+from cuadrnt.utils.db_utils import get_object_id
 
 class StorageManager(object):
     """

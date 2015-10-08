@@ -15,10 +15,10 @@ import datetime
 from cuadrnt.utils.utils import timestamp_to_datetime
 from cuadrnt.utils.utils import datetime_day
 from cuadrnt.utils.utils import get_json
-from cuadrnt.services.phedex import PhEDExService
-from cuadrnt.services.dbs import DBSService
-from cuadrnt.tools.sites import SiteManager
-from cuadrnt.tools.storage import StorageManager
+from cuadrnt.data_management.services.phedex import PhEDExService
+from cuadrnt.data_management.services.dbs import DBSService
+from cuadrnt.data_management.tools.sites import SiteManager
+from cuadrnt.data_management.core.storage import StorageManager
 
 class DatasetManager(object):
     """

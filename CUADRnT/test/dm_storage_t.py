@@ -12,8 +12,8 @@ from datetime import datetime
 
 # package modules
 from cuadrnt.utils.config import get_config
-from cuadrnt.services.phedex import PhEDExService
-from cuadrnt.tools.storage import StorageManager
+from cuadrnt.data_management.services.phedex import PhEDExService
+from cuadrnt.data_management.core.storage import StorageManager
 
 # get local config file
 opt_path = os.path.join(os.path.split(os.path.dirname(os.path.realpath(__file__)))[0], 'etc')

@@ -9,7 +9,7 @@ Description: Helper service to access IntelROCCS files online
 import logging
 
 # package modules
-from cuadrnt.services.generic import GenericService
+from cuadrnt.data_management.services.generic import GenericService
 
 class IntelROCCSService(GenericService):
     """

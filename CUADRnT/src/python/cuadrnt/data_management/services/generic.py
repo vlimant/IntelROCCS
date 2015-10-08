@@ -9,9 +9,9 @@ Description: Generic service module
 import logging
 
 # package modules
-from cuadrnt.tools.storage import StorageManager
 from cuadrnt.utils.web_utils import get_secure_data
 from cuadrnt.utils.web_utils import get_data
+from cuadrnt.data_management.tools.storage import StorageManager
 
 class GenericService(object):
     """

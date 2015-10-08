@@ -11,17 +11,17 @@ import os
 
 # package modules
 from cuadrnt.utils.config import get_config
-from cuadrnt.services.dbs import DBSService
-from cuadrnt.services.crab import CRABService
-from cuadrnt.services.intelroccs import IntelROCCSService
-from cuadrnt.services.mit_db import MITDBService
-from cuadrnt.services.phedex import PhEDExService
-from cuadrnt.services.pop_db import PopDBService
+from cuadrnt.data_management.services.dbs import DBSService
+from cuadrnt.data_management.services.crab import CRABService
+from cuadrnt.data_management.services.intelroccs import IntelROCCSService
+from cuadrnt.data_management.services.mit_db import MITDBService
+from cuadrnt.data_management.services.phedex import PhEDExService
+from cuadrnt.data_management.services.pop_db import PopDBService
 
 # get local config file
 opt_path = os.path.join(os.path.split(os.path.dirname(os.path.realpath(__file__)))[0], 'etc')
 
-@unittest.skip("Skip Test")
+#@unittest.skip("Skip Test")
 class ServicesTests(unittest.TestCase):
     """
     A test class for service classes

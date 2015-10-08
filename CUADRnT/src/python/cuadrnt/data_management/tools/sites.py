@@ -11,9 +11,9 @@ import datetime
 
 # package modules
 from cuadrnt.utils.utils import get_json
-from cuadrnt.services.intelroccs import IntelROCCSService
-from cuadrnt.services.crab import CRABService
-from cuadrnt.tools.storage import StorageManager
+from cuadrnt.data_management.services.intelroccs import IntelROCCSService
+from cuadrnt.data_management.services.crab import CRABService
+from cuadrnt.data_management.core.storage import StorageManager
 
 class SiteManager(object):
     """
