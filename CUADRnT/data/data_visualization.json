@@ -1,0 +1,72 @@
+[
+    {
+        "dataset_name": "Dataset1",
+        "size_gb": 120,
+        "n_files": 50,
+        "physics_group": "Higgs",
+        "ds_type": "mc",
+        "data_tier": "USER",
+        "popularity": [
+            {
+                "date": "2015-09-20",
+                "n_cpus": 0,
+                "n_accesses": 0
+            },
+            {
+                "date": "2015-09-21",
+                "n_cpus": 5,
+                "n_accesses": 2
+            },
+            {
+                "date": "2015-09-22",
+                "n_cpus": 10,
+                "n_accesses": 6
+            },
+            {
+                "date": "2015-09-23",
+                "n_cpus": 2,
+                "n_accesses": 5
+            },
+            {
+                "date": "2015-09-24",
+                "n_cpus": 30,
+                "n_accesses": 19
+            }
+        ]
+    },
+    {
+        "dataset_name": "Dataset2",
+        "size_gb": 30,
+        "n_files": 20,
+        "physics_group": "Higgs",
+        "ds_type": "mc",
+        "data_tier": "USER",
+        "popularity": [
+            {
+                "date": "2015-09-18",
+                "n_cpus": 20,
+                "n_accesses": 15
+            },
+            {
+                "date": "2015-09-19",
+                "n_cpus": 30,
+                "n_accesses": 40
+            },
+            {
+                "date": "2015-09-20",
+                "n_cpus": 10,
+                "n_accesses": 12
+            },
+            {
+                "date": "2015-09-21",
+                "n_cpus": 50,
+                "n_accesses": 39
+            },
+            {
+                "date": "2015-09-22",
+                "n_cpus": 25,
+                "n_accesses": 26
+            }
+        ]
+    }
+]

@@ -125,9 +125,11 @@ class SiteManager(object):
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
         try:
             max_cpus = data[0]['max_cpus']
+            quota = float(data[0]['quota_gb'])/10**3
         except:
             max_cpus = 0
-        quota = float(data[0]['quota_gb'])/10**3
+            quota = 0
+            self.logger.warning('Could not get site performance data for %s', site_name)
         try:
             performance = float(max_cpus)/float(quota)
         except:

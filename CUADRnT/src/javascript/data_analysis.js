@@ -1,6 +1,7 @@
+// Set up interface
 var margin = {top: 30, right: 20, bottom: 40, left: 60};
-var width = 4000;
-// var width = screen.width;
+// var width = 4000;
+var width = screen.width;
 var height = screen.height*0.70;
 
 var x_scale = d3.time.scale().range([margin.left, width - margin.left - margin.right]);
@@ -8,148 +9,139 @@ var y_scale = d3.scale.linear().range([height - margin.bottom, margin.top]);
 
 var x_axis = d3.svg.axis()
     .scale(x_scale)
-    .orient("bottom");
+    .orient("bottom")
+    .tickFormat(d3.time.format("%Y-%m-%d"));
 
 var y_axis = d3.svg.axis()
     .scale(y_scale)
-    .orient("left");
+    .orient("left")
+    .ticks(11);
 
 var chart = d3.select(".chart")
     .attr("width", width)
     .attr("height", height);
 
-var inputs = d3.select(".inputs");
+var cpu_line = d3.svg.line()
+    .x(function(d) { return x_scale(d.date); })
+    .y(function(d) { return y_scale(d.norm_n_cpus); });
 
-d3.selection.prototype.moveToFront = function() {
-    return this.each(function(){
-        this.parentNode.appendChild(this);
+var access_line = d3.svg.line()
+    .x(function(d) { return x_scale(d.date); })
+    .y(function(d) { return y_scale(d.norm_n_accesses); });
+
+var date_parser = d3.time.format("%Y-%m-%d").parse;
+var dataset = 0;
+
+d3.json("./data_visualization.json", function(error, raw_data) {
+    // Parse data
+    var max_cpu = d3.max(raw_data, function(d) { return d3.max(d.popularity, function(d2) { return d2.n_cpus; }); });
+    var max_access = d3.max(raw_data, function(d) { return d3.max(d.popularity, function(d2) { return d2.n_accesses; }); });
+    data = [];
+    raw_data.forEach(function(entry) {
+        dataset_name = entry.dataset_name;
+        size_gb = +entry.size_gb;
+        n_files = +entry.n_files;
+        physics_group = entry.physics_group;
+        ds_type = entry.ds_type;
+        data_tier = entry.data_tier;
+        popularity = [];
+        entry.popularity.forEach(function(pop_entry) {
+            date = date_parser(pop_entry.date);
+            n_cpus = +pop_entry.n_cpus;
+            n_accesses = +pop_entry.n_accesses;
+            popolarity_data = {
+                "date": date,
+                "n_cpus": n_cpus,
+                "n_accesses": n_accesses,
+                "norm_n_cpus": n_cpus/max_cpu,
+                "norm_n_accesses": n_accesses/max_access
+            };
+            popularity.push(popolarity_data);
+        });
+        dataset_data = {
+            "dataset_name": dataset_name,
+            "size_gb": size_gb,
+            "n_files": n_files,
+            "physics_group": physics_group,
+            "ds_type": ds_type,
+            "data_tier": data_tier,
+            "popularity": popularity
+        };
+        data.push(dataset_data);
     });
-};
-
-var maxAge = 0;
-
-d3.csv("/var/lib/cuadrnt/single_dataset.csv", type, function(error, all_csv_data) {
-    y_scale.domain([0, d3.max(csv_data, function(d) { return d.accesses; })]);
-    maxAge = d3.max(all_csv_data, function(d) {return d.age;});
-    d3.select("#maxAge").attr("max", maxAge).property("value", maxAge);
-    d3.select("#maxAge-value").text(maxAge);
 
     chart.append("g")
-        .attr("id", "xAxis")
-        .attr("class", "axis");
+        .attr("id", "x_axis")
+        .attr("class", "axis")
+        .attr("transform", "translate(0," + (height - margin.bottom) + ")")
+        .call(x_axis);
 
     chart.append("g")
-        .attr("id", "yAxis")
-        .attr("class", "axis");
+        .attr("id", "y_axis")
+        .attr("class", "axis")
+        .attr("transform", "translate(" + margin.left + ", 0)")
+        .call(y_axis);
 
     chart.append("text")
         .attr("transform", "translate(" + margin.left + ", " + margin.top + ") rotate(-90)")
         .attr("dy", 12)
         .style("text-anchor", "end")
-        .style("font", "14px sans-serif")
-        .style("fill", "black")
-        .text("accesses");
+        .text("Normalized CPU and Accesses");
 
     chart.append("text")
         .attr("x", width - margin.right - margin.left)
         .attr("y", height - margin.bottom)
         .attr("dy", -10)
         .style("text-anchor", "end")
-        .style("font", "14px sans-serif")
-        .style("fill", "black")
-        .text("age (days)");
+        .text("Date");
 
-    updateData();
+    chart.append("path")
+        .attr("id", "cpu_line")
+        .attr("class", "line");
+    chart.append("path")
+        .attr("id", "access_line")
+        .attr("class", "line");
 
-    d3.select("#maxAge")
-        .on("input", function() {
-            updateMaxAge(+this.value);
-        })
-        .on("mouseup", function() {
-            updateData();
-        });
-
-    function updateMaxAge(newMaxAge) {
-        d3.select("#maxAge-value").text(newMaxAge);
-        maxAge = newMaxAge;
-    }
-    
-    function updateData() {
-        var csv_data = all_csv_data.filter(function(d) {
-            return d.age <= maxAge;
-        });
-
-        x_scale.domain([0, d3.max(csv_data, function(d) {return d.age;})]);
-        
-
-        
-        chart.select("#xAxis")
-            .attr("transform", "translate(0," + (height - margin.bottom) + ")")
-            .call(x_axis);
-
-        chart.select("#yAxis")
-            .attr("transform", "translate(" + margin.left + ", 0)")
-            .call(y_axis);
-
-        var data = d3.nest()
-            .key(function(d) {return d.dataset_name;})
-            .entries(csv_data);
-
-        var avg_data = d3.nest()
-            .key(function(d) {return d.age;})
-            .rollup(function(days) {return d3.mean(days, function(d) {return d.accesses;});})
-            .entries(csv_data);
-
-        var lineFunction = d3.svg.line()
-            .x(function(d) {return x_scale(d.age);})
-            .y(function(d) {return y_scale(d.accesses);})
-            .interpolate("linear");
-
-        var avgLineFunction = d3.svg.line()
-            .x(function(d) {return x_scale(d.key);})
-            .y(function(d) {return y_scale(d.values);})
-            .interpolate("linear");
-
-        chart.selectAll("path")
-            .remove();
-
-        chart.selectAll("path")
-            .data(data)
-            .enter().append("path")
-            .attr("d", function(d) {return lineFunction(d.values);})
-            .style("fill", "none")
-            .style("stroke", "steelblue")
-            .style("stroke-width", 1)
-            .on("mouseover", function(d){
-                d3.select(this)
-                    .style("stroke", "orange")
-                    .moveToFront();
-                var pos = d3.mouse(this);
-                d3.select(".chart")
-                    .append("text")
-                        .attr("id", "info")
-                        .attr("x", pos[0])
-                        .attr("y", pos[1])
-                        .attr("dx", 0)
-                        .attr("dy", -15)
-                        .text(d.key);
-                })
-            .on("mouseout", function(){
-                d3.select(this).style("stroke", "steelblue");
-                d3.select(".chart")
-                    .select("#info").remove();});
-
-        chart.append("path")
-            .attr("d", function() {return avgLineFunction(avg_data);})
-            .style("fill", "none")
-            .style("stroke", "red")
-            .style("stroke-width", 2);
-    }
+    plot_dataset(dataset);
 });
 
-function type(d) {
-    d.dataset_name = d.dataset_name;
-    d.date = d.date;
-    d.popularity = +d.popularity;
-    return d;
+function plot_dataset(dataset_num) {
+    var chart = d3.select("body").transition();
+
+    dataset_data = data[dataset_num];
+    x_axis.ticks(dataset_data.popularity.length);
+    x_scale.domain([d3.min(dataset_data.popularity, function(d) { return d.date; }), d3.max(dataset_data.popularity, function(d) { return d.date; })]);
+    y_scale.domain([0, 1]);
+
+    chart.select("#cpu_line")
+        .duration(750)
+        .attr("d", cpu_line(dataset_data.popularity));
+    chart.select("#access_line")
+        .duration(750)
+        .attr("d", access_line(dataset_data.popularity));
+    chart.select("#x_axis")
+        .duration(750)
+        .call(x_axis);
+    chart.select("#y_axis")
+        .duration(750)
+        .call(y_axis);
+}
+
+function set_point() {
+
+}
+
+// Set up two buttons which on click moves to the next/previus dataset
+function previous_dataset() {
+    if (dataset > 0) {
+        dataset--;
+        plot_dataset(dataset);
+    }
+}
+
+function next_dataset() {
+    if (dataset < (data.length - 1)) {
+        dataset++;
+        plot_dataset(dataset);
+    }
 }

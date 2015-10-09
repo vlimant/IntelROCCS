@@ -1,0 +1,37 @@
+text {
+    font: 10px sans-serif;
+    text-anchor: middle;
+    fill: grey;
+}
+
+.axis text {
+  font: 10px sans-serif;
+}
+
+path { 
+    stroke: steelblue;
+    stroke-width: 2;
+    fill: none;
+}
+
+#cpu_line {
+    stroke: steelblue;
+}
+
+#access_line {
+    stroke: lightgreen;
+}
+
+.axis path,
+.axis line {
+    fill: none;
+    stroke: grey;
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+}
+
+#info {
+    font: 13px sans-serif;
+    text-anchor: middle;
+    fill: #2E2E2E;
+}

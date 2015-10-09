@@ -7,7 +7,17 @@
         <link href="../css/data_analysis.css" rel="stylesheet">
     </head>
     <body>
-        <svg class="chart"></svg>
+        <div id="backward">
+            <input name="backwardButton" 
+                type="button" 
+                value="backward" 
+                onclick="previous_dataset()"/>
+            <input name="forwardButton" 
+                type="button" 
+                value="forward" 
+                onclick="next_dataset()"/>
+        </div>
+        <svg class="chart" onclick="set_point()"></svg>
         <script type="text/javascript" src="../javascript/data_analysis.js"></script>
     </body>
 </html>
