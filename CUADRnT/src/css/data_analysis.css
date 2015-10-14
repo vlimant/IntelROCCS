@@ -4,22 +4,14 @@ text {
     fill: grey;
 }
 
-.axis text {
-  font: 10px sans-serif;
-}
-
 path { 
     stroke: steelblue;
     stroke-width: 2;
     fill: none;
 }
 
-#cpu_line {
-    stroke: steelblue;
-}
-
-#access_line {
-    stroke: lightgreen;
+.axis text {
+  font: 10px sans-serif;
 }
 
 .axis path,
@@ -30,8 +22,21 @@ path {
     shape-rendering: crispEdges;
 }
 
-#info {
-    font: 13px sans-serif;
-    text-anchor: middle;
-    fill: #2E2E2E;
+.classification {
+    fill: red;
+}
+
+.popup {
+    fill: gray;
+    stroke: black;
+    stroke-width: 1;
+    opacity: 0.5;
+}
+
+#access_line {
+    stroke: lightgreen;
+}
+
+#cpu_line {
+    stroke: steelblue;
 }

@@ -16,8 +16,17 @@
                 type="button" 
                 value="forward" 
                 onclick="next_dataset()"/>
+            <input name="submitButton" 
+                type="button" 
+                value="submit" 
+                onclick="submit_classification()"/>
+            <a download="classifications.json"
+                id="downloadlink"
+                style="display: none">
+                Download Classifications
+            </a>
         </div>
-        <svg class="chart" onclick="set_point()"></svg>
+        <svg class="chart"></svg>
         <script type="text/javascript" src="../javascript/data_analysis.js"></script>
     </body>
 </html>

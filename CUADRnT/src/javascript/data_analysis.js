@@ -3,6 +3,7 @@ var margin = {top: 30, right: 20, bottom: 40, left: 60};
 // var width = 4000;
 var width = screen.width;
 var height = screen.height*0.70;
+var radius = 5;
 
 var x_scale = d3.time.scale().range([margin.left, width - margin.left - margin.right]);
 var y_scale = d3.scale.linear().range([height - margin.bottom, margin.top]);
@@ -17,9 +18,34 @@ var y_axis = d3.svg.axis()
     .orient("left")
     .ticks(11);
 
+var class_opt = ["unpopular", "increasing", "popular", "decreasing"];
+
 var chart = d3.select(".chart")
     .attr("width", width)
-    .attr("height", height);
+    .attr("height", height)
+    .on("click", function(d) {
+        // Store the x position
+        var coordinates = [0, 0];
+        coordinates = d3.mouse(this);
+        var x = coordinates[0];
+        var y = coordinates[1];
+        d3.select(this).append("rect")
+            .attr("class", "popup")
+            .attr("x", x)
+            .attr("y", y)
+            .attr("rx", radius)
+            .attr("ry", radius)
+            .attr("width", 150)
+            .attr("height", 150);
+        d3.select(this).selectAll("g")
+            .data(class_opt)
+            .enter().append("text")
+            .attr("transform", function(d, i) { console.log(i); return "translate(" + x + ", " + (y + i * 15) + ")";})
+            .text(function(d) {return d;});
+        // Pop up a rectangle with rounded corners
+        // Add 4 options in the rectangle
+        // handle when these are clicked on
+    });
 
 var cpu_line = d3.svg.line()
     .x(function(d) { return x_scale(d.date); })
@@ -31,6 +57,8 @@ var access_line = d3.svg.line()
 
 var date_parser = d3.time.format("%Y-%m-%d").parse;
 var dataset = 0;
+var classifications = [];
+var dl_file = null;
 
 d3.json("./data_visualization.json", function(error, raw_data) {
     // Parse data
@@ -125,14 +153,45 @@ function plot_dataset(dataset_num) {
     chart.select("#y_axis")
         .duration(750)
         .call(y_axis);
+
+    add_classification("unpopular", d3.min(dataset_data.popularity, function(d) { return d.date; }));
 }
 
-function set_point() {
+function make_file() {
+    var json = JSON.stringify(classifications);
+    var blob = new Blob([json], {type: "application/json"});
+    if (dl_file !== null) {
+        window.URL.revokeObjectURL(dl_file);
+    }
+    dl_file = window.URL.createObjectURL(blob);
+    return dl_file;
+}
 
+function add_classification(class_type, date) {
+    var chart = d3.select(".chart");
+    class_data = {
+        "dataset_name": dataset_data.dataset_name,
+        "date": date,
+        "classification": class_type
+    };
+    classifications.push(class_data);
+
+    chart.append("circle")
+        .attr("class", "classification")
+        .attr("cx", function (d) { return x_scale(date); })
+        .attr("cy", function (d) { return y_scale(0); })
+        .attr("r", radius);
+}
+
+function remove_calssifications() {
+    var chart = d3.select(".chart");
+    chart.select(".classification")
+        .remove();
 }
 
 // Set up two buttons which on click moves to the next/previus dataset
 function previous_dataset() {
+    remove_calssifications();
     if (dataset > 0) {
         dataset--;
         plot_dataset(dataset);
@@ -140,8 +199,15 @@ function previous_dataset() {
 }
 
 function next_dataset() {
+    remove_calssifications();
     if (dataset < (data.length - 1)) {
         dataset++;
         plot_dataset(dataset);
     }
+}
+
+function submit_classification() {
+    var link = d3.select("#downloadlink");
+    link.attr("href", make_file());
+    link.style("display", "block");
 }
