@@ -12,7 +12,7 @@ from math import log
 
 # package modules
 from cuadrnt.utils.utils import datetime_day
-from cuadrnt.rankings.generic import GenericRanking
+from cuadrnt.data_analysis.rankings.generic import GenericRanking
 
 class DeltaRanking(GenericRanking):
     """
@@ -22,57 +22,6 @@ class DeltaRanking(GenericRanking):
     def __init__(self, config=dict()):
         GenericRanking.__init__(self, config)
         self.logger = logging.getLogger(__name__)
-
-    def dataset_rankings(self):
-        """
-        Generate dataset rankings
-        """
-        date = datetime_day(datetime.datetime.utcnow())
-        dataset_names = self.datasets.get_db_datasets()
-        dataset_rankings = dict()
-        coll = 'dataset_popularity'
-        for dataset_name in dataset_names:
-            delta_popularity = self.get_dataset_popularity(dataset_name)
-            # insert into database
-            query = {'name':dataset_name, 'date':date}
-            data = {'$set':{'delta_popularity':delta_popularity}}
-            self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
-            # store into dict
-            dataset_rankings[dataset_name] = delta_popularity
-        return dataset_rankings
-
-    def site_rankings(self):
-        """
-        Generate site rankings
-        """
-        date = datetime_day(datetime.datetime.utcnow())
-        # get all sites which can be replicated to
-        site_names = self.sites.get_available_sites()
-        site_rankings = dict()
-        for site_name in site_names:
-            # get popularity
-            popularity = float(self.get_site_popularity(site_name))
-            # get cpu and storage (performance)
-            performance = float(self.sites.get_performance(site_name))
-            # get available storage
-            available_storage = float(self.sites.get_available_storage(site_name))
-            if available_storage <= 0:
-                available_storage = 0.0
-            # insert into database
-            coll = 'site_popularity'
-            query = {'name':site_name, 'date':date}
-            data = {'$set':{'name':site_name, 'date':date, 'delta_popularity':popularity, 'performance':performance, 'available_storage':available_storage}}
-            self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
-            #calculate rank
-            rank = (performance*available_storage)/popularity
-            # store into dict
-            site_rankings[site_name] = rank
-            # insert into database
-            coll = 'site_rankings'
-            query = {'name':site_name, 'date':date}
-            data = {'$set':{'name':site_name, 'date':date, 'delta_rank':rank}}
-            self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
-        return site_rankings
 
     def get_dataset_popularity(self, dataset_name):
         """

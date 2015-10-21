@@ -63,7 +63,6 @@ class ServicesTests(unittest.TestCase):
         "Test intelroccs functions"
         print ""
         intelroccs = IntelROCCSService(config=self.config)
-        # CURRENT
         api = 'Detox'
         file_ = 'SitesInfo.txt'
         json_data = intelroccs.fetch(api=api, params=file_, secure=False, cache=False)

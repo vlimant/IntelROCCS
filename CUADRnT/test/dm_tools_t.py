@@ -13,6 +13,7 @@ import os
 from cuadrnt.utils.config import get_config
 from cuadrnt.data_management.tools.sites import SiteManager
 from cuadrnt.data_management.tools.datasets import DatasetManager
+from cuadrnt.data_management.tools.popularity import PopularityManager
 
 # get local config file
 opt_path = os.path.join(os.path.split(os.path.dirname(os.path.realpath(__file__)))[0], 'etc')
@@ -31,23 +32,32 @@ class ToolsTests(unittest.TestCase):
         pass
 
     #@unittest.skip("Skip Test")
-    def test_sites(self):
+    def test_managers(self):
         "Test managers"
-        print ""
         sites = SiteManager(config=self.config)
-        sites.initiate_db()
-        sites.update_cpu()
         sites.update_db()
-        # test different functions
-
-    #@unittest.skip("Skip Test")
-    def test_datasets(self):
-        "Test managers"
-        print ""
+        sites.update_cpu()
         datasets = DatasetManager(config=self.config)
-        datasets.initiate_db()
         datasets.update_db()
-        # test different functions
+        print "Number of active sites: ", len(sites.get_active_sites())
+        print "Number of available sites: ", len(sites.get_available_sites())
+        tot_performance = 0.0
+        tot_avail_storage = 0
+        for site in sites.get_available_sites():
+            tot_performance += sites.get_performance(site)
+            tot_avail_storage += sites.get_available_storage(site)
+        print "Total performance: ", tot_performance
+        print "Total storage available: ", tot_avail_storage
+        print "Number of datasets in AnalysisOps: ", len(datasets.get_db_datasets())
+        tot_replicas = 0
+        tot_size = 0.0
+        for dataset in datasets.get_db_datasets():
+            tot_replicas += len(datasets.get_sites(dataset))
+            tot_size += datasets.get_size(dataset)
+        print "Total number of replicas: ", tot_replicas
+        # print "Total dataset size: %.2fGB" % (tot_size)
+        popularity = PopularityManager(config=self.config)
+        popularity.initiate_db()
 
 if __name__ == '__main__':
     unittest.main()
