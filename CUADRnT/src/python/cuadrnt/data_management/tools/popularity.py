@@ -75,7 +75,7 @@ class PopularityManager(object):
                 popularity_data['n_accesses'] = dataset['NACC']
                 popularity_data['n_cpus'] = dataset['TOTCPU']
                 popularity_data['n_users'] = dataset['NUSERS']
-                query = {'name':dataset_name, 'data':date}
+                query = {'name':dataset_name, 'date':date}
                 data = {'$set':popularity_data}
                 self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
             q.task_done()
@@ -110,6 +110,7 @@ class PopularityManager(object):
         t1 = datetime.datetime.utcnow()
         for date in daterange(start_date, end_date):
             q.put(date)
+        q.join()
         t2 = datetime.datetime.utcnow()
         td = t2 - t1
         self.logger.info('Updating Pop DB data took %s', str(td))
@@ -130,8 +131,21 @@ class PopularityManager(object):
             data = get_json(json_data, 'data')
             for pop_data in get_json(data, 'data'):
                 date = pop_db_timestamp_to_datetime(pop_data[0])
-                query = {'name':dataset_name, 'data':date}
+                query = {'name':dataset_name, 'date':date}
                 popularity_data = {'name':dataset_name, 'date':date}
                 popularity_data[orderby] = pop_data[1]
                 data = {'$set':popularity_data}
                 self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
+
+    def get_dataset_popularity(self, dataset_name):
+        """
+        Get all popualrity data for a dataset
+        """
+        coll = 'dataset_popularity'
+        pipeline = list()
+        match = {'$match':{'name':dataset_name}}
+        pipeline.append(match)
+        project = {'$project':{'date':1, 'n_cpus':1, 'n_accesses':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        return data[0]

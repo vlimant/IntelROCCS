@@ -25,7 +25,7 @@ from distutils.cmd import Command
 from distutils.dir_util import mkpath
 from logging.handlers import TimedRotatingFileHandler
 
-version = '1.0'  # TODO: (10) Set up automatic versioning system
+version = '1.9'
 required_python_version = '2.7'
 
 class TestCommand(Command):

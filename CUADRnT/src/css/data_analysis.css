@@ -23,14 +23,7 @@ path {
 }
 
 .classification {
-    fill: red;
-}
-
-.popup {
-    fill: gray;
-    stroke: black;
-    stroke-width: 1;
-    opacity: 0.5;
+    fill: orange;
 }
 
 #access_line {

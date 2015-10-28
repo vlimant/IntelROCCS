@@ -14,10 +14,10 @@ from logging.handlers import TimedRotatingFileHandler
 
 # package modules
 from cuadrnt.utils.config import get_config
-from cuadrnt.tools.storage import StorageManager
-from cuadrnt.tools.sites import SiteManager
-from cuadrnt.tools.datasets import DatasetManager
-from cuadrnt.tools.popularity import PopularityManager
+from cuadrnt.data_management.tools.sites import SiteManager
+from cuadrnt.data_management.tools.datasets import DatasetManager
+from cuadrnt.data_management.tools.popularity import PopularityManager
+from cuadrnt.data_management.core.storage import StorageManager
 
 class UpdateDB(object):
     """
@@ -48,7 +48,7 @@ def main(argv):
     Main driver for Update DB
     """
     log_level = logging.WARNING
-    config = get_config(path='/var/opt/cuadrnt', file_name='update_db.cfg')
+    config = get_config(path='/var/opt/cuadrnt', file_name='cuadrnt.cfg')
     try:
         opts, args = getopt.getopt(argv, 'h', ['help', 'log='])
     except getopt.GetoptError:

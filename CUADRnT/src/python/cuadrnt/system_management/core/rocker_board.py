@@ -22,7 +22,7 @@ from cuadrnt.data_management.services.phedex import PhEDExService
 from cuadrnt.data_management.services.mit_db import MITDBService
 from cuadrnt.data_management.tools.datasets import DatasetManager
 from cuadrnt.data_management.tools.sites import SiteManager
-from cuadrnt.data_management.tools.storage import StorageManager
+from cuadrnt.data_management.core.storage import StorageManager
 from cuadrnt.data_analysis.rankings.delta import DeltaRanking
 
 class RockerBoard(object):
@@ -50,12 +50,12 @@ class RockerBoard(object):
         dataset_rankings = self.rankings.get_dataset_rankings()
         site_rankings = self.rankings.get_site_rankings()
         self.change_dataset_rankings(dataset_rankings)
-        subscriptions = self.replicate(dataset_rankings)
+        subscriptions = self.replicate(dataset_rankings, site_rankings)
         self.logger.info('SUBSCRIPTIONS')
         for subscription in subscriptions:
             self.logger.info('site: %s\tdataset: %s', subscription[1], subscription[0])
-        site_storage = self.get_site_storage()
-        deletions = self.delete(dataset_rankings, site_storage)
+        site_storage = self.rankings.get_site_storage_rankings(subscriptions)
+        deletions = self.clean(dataset_rankings, site_storage)
         self.logger.info('DELETIONS')
         for deletion in deletions:
             self.logger.info('site: %s\tdataset: %s', deletions[1], deletions[0])
@@ -74,23 +74,13 @@ class RockerBoard(object):
         for dataset in current_replicas:
             dataset_rankings[dataset['name']] -= dataset['n_replicas']
 
-    def get_site_storage(self, subscriptions):
-        """
-        Return the amount over the soft limit sites are including new subscriptions
-        If site is not over just set to 0
-        """
-        site_rankings = dict()
-        available_sites = self.sites.get_available_sites()
-        for site in available_sites:
-            
-
     def replicate(self, dataset_rankings, site_rankings):
         """
         Balance system by creating new replicas based on popularity
         """
         subscriptions = list()
         subscribed_gb = 0
-        while subscribed_gb < self.max_gb:
+        while (subscribed_gb < self.max_gb) or (not site_rankings):
             tmp_site_rankings = site_rankings
             dataset = max(dataset_rankings.iteritems(), key=operator.itemgetter(1))
             dataset_name = dataset[0]
@@ -108,23 +98,56 @@ class RockerBoard(object):
                 except:
                     continue
             if not tmp_site_rankings:
-                break
+                continue
             site_name = weighted_choice(tmp_site_rankings)
-            subscription = tuple(dataset_name, site_name)
+            subscription = (dataset_name, site_name)
             subscriptions.append(subscription)
             subscribed_gb += size_gb
-            avail_storage = self.sites.get_available_storage(site_name)
-            self.logger.info('rank: %s\tsize: %.2f\tdataset: %s', dataset_rankings[dataset_name], size_gb, dataset_name)
-            self.logger.info('rank: %s\tstorage: %d\site: %s', site_rankings[site_name], avail_storage, site_name)
-            new_avail_storage = avail_storage - self.datasets.get_size(dataset_name)
-            if new_avail_storage > 0:
-                new_rank = 0.0
-            else:
-                new_rank = (site_rankings[site_name]/avail_storage)*new_avail_storage
+            avail_storage_gb = self.sites.get_available_storage(site_name)
+            self.logger.info('rank: %s\tsize: %.2fGB\tdataset: %s', dataset_rankings[dataset_name], size_gb, dataset_name)
+            self.logger.info('rank: %s\tstorage: %dGB\t\site: %s', site_rankings[site_name], avail_storage_gb, site_name)
+            new_avail_storage_tb = (avail_storage_gb - size_gb)/10**3
+            avail_storage_tb = avail_storage_gb/10**3
+            new_rank = (site_rankings[site_name]/avail_storage_tb)*new_avail_storage_tb
             site_rankings[site_name] = new_rank
             dataset_rankings[dataset_name] -= 1
         self.logger.info('Subscribed %dGB', subscribed_gb)
         return subscriptions
+
+    def clean(self, dataset_rankings, site_rankings):
+        """
+        Suggest deletions based on dataset and site rankings
+        """
+        deletions = list()
+        deleted_gb = 0
+        while(site_rankings):
+            tmp_site_rankings = dict()
+            dataset = min(dataset_rankings.iteritems(), key=operator.itemgetter(1))
+            dataset_name = dataset[0]
+            dataset_rank = dataset[1]
+            if (not dataset_name) or (dataset_rank > -1):
+                break
+            size_gb = self.datasets.get_size(dataset_name)
+            available_sites = set(self.datasets.get_sites(dataset_name))
+            for site_name in available_sites:
+                try:
+                    tmp_site_rankings[site_name] = site_rankings[site_name]
+                except:
+                    pass
+            if not tmp_site_rankings:
+                continue
+            site_name = weighted_choice(tmp_site_rankings)
+            deletion = (dataset_name, site_name)
+            deletions.append(deletion)
+            deleted_gb += size_gb
+            self.logger.info('rank: %s\tsize: %.2f\tdataset: %s', dataset_rankings[dataset_name], size_gb, dataset_name)
+            self.logger.info('rank: %s\t\site: %s', site_rankings[site_name], site_name)
+            site_rankings[site_name] -= size_gb
+            dataset_rankings[dataset_name] += 1
+            if site_rankings[site_name] <= 0:
+                del site_rankings[site_name]
+        self.logger.info('Deleted %dGB', deleted_gb)
+        return deletions
 
     def subscribe(self, subscriptions):
         """
@@ -163,10 +186,55 @@ class RockerBoard(object):
                 pipeline = list()
                 match = {'$match':{'name':dataset_name, 'date':date}}
                 pipeline.append(match)
-                project = {'$project':{'delta_popularity':1, '_id':0}}
+                project = {'$project':{'popularity':1, '_id':0}}
                 pipeline.append(project)
                 data = self.storage.get_data(coll=coll, pipeline=pipeline)
-                dataset_rank = data[0]['delta_popularity']
+                dataset_rank = data[0]['popularity']
+                query = "INSERT INTO Requests(RequestId, RequestType, DatasetId, SiteId, GroupId, Rank, Date) SELECT %s, %s, Datasets.DatasetId, Sites.SiteId, Groups.GroupId, %s, %s FROM Datasets, Sites, Groups WHERE Datasets.DatasetName=%s AND Sites.SiteName=%s AND Groups.GroupName=%s"
+                values = (request_id, request_type, dataset_rank, request_created, dataset_name, site_name, group_name)
+                self.mit_db.query(query=query, values=values, cache=False)
+
+    def delete(self, deletions):
+        """
+        Make deletions to phedex
+        deletions = [(dataset_name, site_name), ...]
+        """
+        new_deletions = dict()
+        for deletion in deletions:
+            dataset_name = deletion[0]
+            site_name = deletion[1]
+            try:
+                new_deletions[site_name].append(dataset_name)
+            except:
+                new_deletions[site_name] = list()
+                new_deletions[site_name].append(dataset_name)
+        for site_name, dataset_names in new_deletions.items():
+            data = self.phedex.generate_xml(dataset_names)
+            comments = 'This dataset is predicted to become less popular and has therefore been automatically deleted by cuadrnt'
+            api = 'delete'
+            params = [('node', site_name), ('data', data), ('level','dataset'), ('rm_subscriptions', 'y'), ('comments', comments)]
+            json_data = self.phedex.fetch(api=api, params=params, method='post')
+            # insert into db
+            group_name = 'AnalysisOps'
+            request_id = 0
+            request_type = 1
+            try:
+                request = json_data['phedex']
+                request_id = request['request_created'][0]['id']
+                request_created = timestamp_to_datetime(request['request_timestamp'])
+            except:
+                self.logger.warning('Deletion did not succeed\n\tSite:%s\n\tDatasets: %s', str(site_name), str(dataset_names))
+                continue
+            for dataset_name in dataset_names:
+                coll = 'dataset_popularity'
+                date = datetime_day(datetime.datetime.utcnow())
+                pipeline = list()
+                match = {'$match':{'name':dataset_name, 'date':date}}
+                pipeline.append(match)
+                project = {'$project':{'popularity':1, '_id':0}}
+                pipeline.append(project)
+                data = self.storage.get_data(coll=coll, pipeline=pipeline)
+                dataset_rank = data[0]['popularity']
                 query = "INSERT INTO Requests(RequestId, RequestType, DatasetId, SiteId, GroupId, Rank, Date) SELECT %s, %s, Datasets.DatasetId, Sites.SiteId, Groups.GroupId, %s, %s FROM Datasets, Sites, Groups WHERE Datasets.DatasetName=%s AND Sites.SiteName=%s AND Groups.GroupName=%s"
                 values = (request_id, request_type, dataset_rank, request_created, dataset_name, site_name, group_name)
                 self.mit_db.query(query=query, values=values, cache=False)
@@ -176,7 +244,7 @@ def main(argv):
     Main driver for Rocker Board Algorithm
     """
     log_level = logging.WARNING
-    config = get_config(path='/var/opt/cuadrnt', file_name='rocker_board.cfg')
+    config = get_config(path='/var/opt/cuadrnt', file_name='cuadrnt.cfg')
     try:
         opts, args = getopt.getopt(argv, 'h', ['help', 'log='])
     except getopt.GetoptError:

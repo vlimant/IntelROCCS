@@ -59,7 +59,7 @@ class DatasetManager(object):
         q.join()
         t2 = datetime.datetime.utcnow()
         td = t2 - t1
-        self.logger.info('Inserting PhEDEx data took %s', str(td))
+        self.logger.info('Inserting dataset data took %s', str(td))
         self.logger.info('Done inserting datasets into DB')
 
     def update_db(self):
@@ -75,7 +75,11 @@ class DatasetManager(object):
         active_sites = self.sites.get_active_sites()
         api = 'blockreplicas'
         params = [('node', active_sites), ('create_since', 0.0), ('complete', 'y'), ('group', 'AnalysisOps'), ('show_dataset', 'y')]
+        t1 = datetime.datetime.utcnow()
         phedex_data = self.phedex.fetch(api=api, params=params)
+        t2 = datetime.datetime.utcnow()
+        td = t2 - t1
+        self.logger.info('Call to PhEDEx took %s', str(td))
         current_datasets = set()
         q = Queue.Queue()
         for i in range(self.MAX_THREADS):
@@ -83,6 +87,7 @@ class DatasetManager(object):
             worker.daemon = True
             worker.start()
         count = 1
+        t1 = datetime.datetime.utcnow()
         for dataset_data in get_json(get_json(phedex_data, 'phedex'), 'dataset'):
             dataset_name = get_json(dataset_data, 'name')
             current_datasets.add(dataset_name)
@@ -101,6 +106,10 @@ class DatasetManager(object):
         deprecated_datasets = dataset_names - current_datasets
         for dataset_name in deprecated_datasets:
             self.remove_dataset(dataset_name)
+        t2 = datetime.datetime.utcnow()
+        td = t2 - t1
+        self.logger.info('Updating dataset data took %s', str(td))
+        self.logger.info('Done updating datasets in DB')
 
     def insert_dataset_data(self, i, q):
         """
@@ -112,13 +121,15 @@ class DatasetManager(object):
             count = data[1]
             self.logger.debug('Inserting dataset number %d', count)
             dataset_name = get_json(dataset_data, 'name')
-            replicas = self.get_replicas(dataset_data)
             coll = 'dataset_data'
             query = {'name':dataset_name}
-            data = {'$set':{'name':dataset_name, 'replicas':replicas}}
+            data = {'$set':{'name':dataset_name}}
             data = self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
             self.insert_phedex_data(dataset_name)
             self.insert_dbs_data(dataset_name)
+            replicas = self.get_replicas(dataset_data)
+            query = {'name':dataset_name}
+            data = {'$set':{'name':dataset_name, 'replicas':replicas}}
             q.task_done()
 
     def insert_phedex_data(self, dataset_name):
@@ -173,11 +184,19 @@ class DatasetManager(object):
         """
         Generator function to get all replicas of a dataset
         """
-        replicas = list()
+        replicas_check = dict()
+        dataset_name = get_json(dataset_data, 'name')
         for block_data in get_json(dataset_data, 'block'):
             for replica_data in get_json(block_data, 'replica'):
-                if get_json(replica_data, 'files') > 0:
-                    replicas.append(get_json(replica_data, 'node'))
+                try:
+                    replicas_check[get_json(replica_data, 'node')] += get_json(replica_data, 'files')
+                except:
+                    replicas_check[get_json(replica_data, 'node')] = get_json(replica_data, 'files')
+        replicas = list()
+        n_files = self.get_n_files(dataset_name)
+        for site, site_files in replicas_check.items():
+            if site_files == n_files:
+                replicas.append(site)
         return replicas
 
     def get_db_datasets(self):
@@ -200,6 +219,32 @@ class DatasetManager(object):
         coll = 'dataset_data'
         query = {'name':dataset_name}
         self.storage.delete_data(coll=coll, query=query)
+
+    def get_n_files(self, dataset_name):
+        """
+        Get the number of files in the block
+        """
+        coll = 'dataset_data'
+        pipeline = list()
+        match = {'$match':{'name':dataset_name}}
+        pipeline.append(match)
+        project = {'$project':{'n_files':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        return data[0]['n_files']
+
+    def get_dataset_features(self, dataset_name):
+        """
+        Get dataset features for dataset from db
+        """
+        coll = 'dataset_data'
+        pipeline = list()
+        match = {'$match':{'name':dataset_name}}
+        pipeline.append(match)
+        project = {'$project':{'dataset_name':'$name', 'size_gb':{'$multiply':['$size_bytes', 0.000000001]}, 'n_files':1, 'physics_group':1, 'ds_type':1, 'data_tier':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        return data[0]
 
     def get_current_num_replicas(self):
         """

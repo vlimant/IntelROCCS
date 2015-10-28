@@ -1,6 +1,6 @@
 #!/usr/bin/env python2.7
 """
-File       : services_t.py
+File       : dm_services_t.py
 Author     : Bjorn Barrefors <bjorn dot peter dot barrefors AT cern dot ch>
 Description: Test class for service classes
 """
@@ -21,7 +21,7 @@ from cuadrnt.data_management.services.pop_db import PopDBService
 # get local config file
 opt_path = os.path.join(os.path.split(os.path.dirname(os.path.realpath(__file__)))[0], 'etc')
 
-#@unittest.skip("Skip Test")
+@unittest.skip("Skip Test")
 class ServicesTests(unittest.TestCase):
     """
     A test class for service classes

@@ -18,33 +18,18 @@ var y_axis = d3.svg.axis()
     .orient("left")
     .ticks(11);
 
-var class_opt = ["unpopular", "increasing", "popular", "decreasing"];
+var class_x = margin.left;
+var class_type = "unchanged";
 
 var chart = d3.select(".chart")
     .attr("width", width)
     .attr("height", height)
     .on("click", function(d) {
-        // Store the x position
         var coordinates = [0, 0];
         coordinates = d3.mouse(this);
-        var x = coordinates[0];
-        var y = coordinates[1];
-        d3.select(this).append("rect")
-            .attr("class", "popup")
-            .attr("x", x)
-            .attr("y", y)
-            .attr("rx", radius)
-            .attr("ry", radius)
-            .attr("width", 150)
-            .attr("height", 150);
-        d3.select(this).selectAll("g")
-            .data(class_opt)
-            .enter().append("text")
-            .attr("transform", function(d, i) { console.log(i); return "translate(" + x + ", " + (y + i * 15) + ")";})
-            .text(function(d) {return d;});
-        // Pop up a rectangle with rounded corners
-        // Add 4 options in the rectangle
-        // handle when these are clicked on
+        class_x = coordinates[0];
+        d3.selectAll(".classify")
+            .attr("disabled", null);
     });
 
 var cpu_line = d3.svg.line()
@@ -153,8 +138,6 @@ function plot_dataset(dataset_num) {
     chart.select("#y_axis")
         .duration(750)
         .call(y_axis);
-
-    add_classification("unpopular", d3.min(dataset_data.popularity, function(d) { return d.date; }));
 }
 
 function make_file() {
@@ -167,8 +150,12 @@ function make_file() {
     return dl_file;
 }
 
-function add_classification(class_type, date) {
-    var chart = d3.select(".chart");
+function set_class_type() {
+    class_type = d3.select("#class_type").node().value;
+}
+
+function add_classification() {
+    var date = x_scale.invert(class_x);
     class_data = {
         "dataset_name": dataset_data.dataset_name,
         "date": date,
@@ -181,33 +168,26 @@ function add_classification(class_type, date) {
         .attr("cx", function (d) { return x_scale(date); })
         .attr("cy", function (d) { return y_scale(0); })
         .attr("r", radius);
+
+    d3.selectAll(".classify")
+        .attr("disabled", "disabled");
 }
 
 function remove_calssifications() {
-    var chart = d3.select(".chart");
-    chart.select(".classification")
+    chart.selectAll(".classification")
         .remove();
 }
 
-// Set up two buttons which on click moves to the next/previus dataset
-function previous_dataset() {
-    remove_calssifications();
-    if (dataset > 0) {
-        dataset--;
-        plot_dataset(dataset);
-    }
-}
-
 function next_dataset() {
-    remove_calssifications();
     if (dataset < (data.length - 1)) {
         dataset++;
         plot_dataset(dataset);
     }
+    remove_calssifications();
 }
 
 function submit_classification() {
     var link = d3.select("#downloadlink");
     link.attr("href", make_file());
-    link.style("display", "block");
+    link.style("display", "inline");
 }

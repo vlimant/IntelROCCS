@@ -25,6 +25,8 @@ class SiteManager(object):
         self.intelroccs = IntelROCCSService(self.config)
         self.crab = CRABService(self.config)
         self.storage = StorageManager(self.config)
+        self.soft_limit = float(self.config['rocker_board']['soft_limit'])
+        self.hard_limit = float(self.config['rocker_board']['hard_limit'])
 
     def initiate_db(self):
         """
@@ -107,9 +109,40 @@ class SiteManager(object):
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
         return [site['name'] for site in data]
 
+    def get_performance(self, site_name):
+        """
+        Maximum num CPU's divide by quota
+        """
+        max_cpus = self.get_max_cpu(site_name)
+        quota_gb = self.get_quota(site_name)
+        try:
+            performance = float(max_cpus)/float(quota_gb/10**3)
+        except:
+            performance = 0.0
+        return performance
+
     def get_available_storage(self, site_name):
         """
         Get total AnalysisOps storage available at the site
+        """
+        size_gb = self.get_data(site_name)
+        quota_gb = self.get_quota(site_name)
+        available_gb = max(0, (self.hard_limit*quota_gb) - size_gb)
+        return available_gb
+
+    def get_over_soft_limit(self, site_name):
+        """
+        Get the amount of GB a site is over the soft limit i.e lower limit.
+        If it's not over set to 0
+        """
+        size_gb = self.get_data(site_name)
+        quota_gb = self.get_quota(site_name)
+        over_gb = size_gb - (self.soft_limit*quota_gb)
+        return over_gb
+
+    def get_data(self, site_name):
+        """
+        Get the amount of data at the site
         """
         coll = 'dataset_data'
         pipeline = list()
@@ -121,9 +154,15 @@ class SiteManager(object):
         pipeline.append(project)
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
         try:
-            size = data[0]['size_bytes']/10**9
+            size_gb = data[0]['size_bytes']/10**9
         except:
             return 0
+        return size_gb
+
+    def get_quota(self, site_name):
+        """
+        Get the AnalysisOps quota for the site
+        """
         coll = 'site_data'
         pipeline = list()
         match = {'$match':{'name':site_name}}
@@ -131,37 +170,30 @@ class SiteManager(object):
         project = {'$project':{'quota_gb':1, '_id':0}}
         pipeline.append(project)
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
-        quota = data[0]['quota_gb']
-        available_gb = (0.95*quota) - size
-        return available_gb
+        try:
+            quota_gb = data[0]['quota_gb']
+        except:
+            return 0
+        return quota_gb
 
-    def get_performance(self, site_name):
+    def get_max_cpu(self, site_name):
         """
-        Get the maximum number of CPU's for site in last 30 days
+        Get the maximum number of CPU's in the last 30 days at the site
         """
-        # get maximum number of CPU's and quota
         coll = 'site_data'
         pipeline = list()
         match = {'$match':{'name':site_name}}
         pipeline.append(match)
         unwind = {'$unwind':'$cpu_data'}
         pipeline.append(unwind)
-        group = {'$group':{'_id':'$name', 'quota_gb':{'$max':'$quota_gb'}, 'max_cpus':{'$max':'$cpu_data.cpus'}}}
+        group = {'$group':{'_id':'$name', 'max_cpus':{'$max':'$cpu_data.cpus'}}}
         pipeline.append(group)
-        project = {'$project':{'quota_gb':1, 'max_cpus':1, '_id':0}}
+        project = {'$project':{'max_cpus':1, '_id':0}}
         pipeline.append(project)
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
         try:
             max_cpus = data[0]['max_cpus']
-            quota = float(data[0]['quota_gb'])/10**3
         except:
             self.logger.warning('Could not get site performance for %s', site_name)
-            max_cpus = 0
-            quota = 0
-        try:
-            performance = float(max_cpus)/float(quota)
-        except:
-            performance = 0.0
-        if not (performance > 0):
-            performance = 0.0
-        return performance
+            return 0
+        return max_cpus
