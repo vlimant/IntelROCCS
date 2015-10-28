@@ -125,11 +125,16 @@ class DatasetManager(object):
             query = {'name':dataset_name}
             data = {'$set':{'name':dataset_name}}
             data = self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
-            self.insert_phedex_data(dataset_name)
-            self.insert_dbs_data(dataset_name)
-            replicas = self.get_replicas(dataset_data)
-            query = {'name':dataset_name}
-            data = {'$set':{'name':dataset_name, 'replicas':replicas}}
+            try:
+                self.insert_phedex_data(dataset_name)
+                self.insert_dbs_data(dataset_name)
+                replicas = self.get_replicas(dataset_data)
+                query = {'name':dataset_name}
+                data = {'$set':{'name':dataset_name, 'replicas':replicas}}
+            except:
+                coll = 'dataset_data'
+                query = {'name':dataset_name}
+                self.storage.delete_data(coll=coll, query=query)
             q.task_done()
 
     def insert_phedex_data(self, dataset_name):
@@ -141,13 +146,7 @@ class DatasetManager(object):
         phedex_data = self.phedex.fetch(api=api, params=params)
         size_bytes = 0
         n_files = 0
-        try:
-            dataset_data = get_json(get_json(get_json(phedex_data, 'phedex'), 'dbs')[0],'dataset')[0]
-        except:
-            coll = 'dataset_data'
-            query = {'name':dataset_name}
-            self.storage.delete_data(coll=coll, query=query)
-            return
+        dataset_data = get_json(get_json(get_json(phedex_data, 'phedex'), 'dbs')[0],'dataset')[0]
         for block_data in get_json(dataset_data, 'block'):
             size_bytes += get_json(block_data, 'bytes')
             n_files += get_json(block_data, 'files')
@@ -163,13 +162,7 @@ class DatasetManager(object):
         api = 'datasets'
         params = {'dataset':dataset_name, 'detail':True, 'dataset_access_type':'*'}
         dbs_data = self.dbs.fetch(api=api, params=params)
-        try:
-            dataset_data = get_json(dbs_data, 'data')[0]
-        except:
-            coll = 'dataset_data'
-            query = {'name':dataset_name}
-            self.storage.delete_data(coll=coll, query=query)
-            return
+        dataset_data = get_json(dbs_data, 'data')[0]
         ds_name = get_json(dataset_data, 'primary_ds_name')
         physics_group = get_json(dataset_data, 'physics_group_name')
         data_tier = get_json(dataset_data, 'data_tier_name')
