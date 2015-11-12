@@ -72,6 +72,8 @@ class GenericRanking(object):
             available_storage_tb = self.sites.get_available_storage(site_name)/10**3
             if available_storage_tb <= 0:
                 available_storage_tb = 0
+            else:
+                available_storage_tb = 1
             #calculate rank
             try:
                 rank = (performance*available_storage_tb)/popularity

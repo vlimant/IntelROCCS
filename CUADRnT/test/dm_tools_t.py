@@ -18,7 +18,7 @@ from cuadrnt.data_management.tools.popularity import PopularityManager
 # get local config file
 opt_path = os.path.join(os.path.split(os.path.dirname(os.path.realpath(__file__)))[0], 'etc')
 
-#@unittest.skip("Skip Test")
+@unittest.skip("Skip Test")
 class ToolsTests(unittest.TestCase):
     """
     A test class for tools classes
@@ -34,13 +34,14 @@ class ToolsTests(unittest.TestCase):
     #@unittest.skip("Skip Test")
     def test_managers(self):
         "Test managers"
-        sites = SiteManager(config=self.config)
-        sites.initiate_db()
+        # sites = SiteManager(config=self.config)
+        # sites.initiate_db()
         # sites.update_db()
-        sites.update_cpu()
+        # sites.update_cpu()
         datasets = DatasetManager(config=self.config)
-        datasets.initiate_db()
+        # datasets.initiate_db()
         # datasets.update_db()
+        replicas = datasets.get_current_num_replicas()
         # print "Number of active sites: ", len(sites.get_active_sites())
         # print "Number of available sites: ", len(sites.get_available_sites())
         # tot_performance = 0.0
@@ -64,8 +65,8 @@ class ToolsTests(unittest.TestCase):
         #     tot_size += datasets.get_size(dataset)
         # print "Total number of replicas: ", tot_replicas
         # print "Total dataset size: %.2fGB" % (tot_size)
-        popularity = PopularityManager(config=self.config)
-        popularity.initiate_db()
+        # popularity = PopularityManager(config=self.config)
+        # popularity.initiate_db()
         # popularity.update_db()
 
 if __name__ == '__main__':

@@ -60,7 +60,7 @@ class RockerBoard(object):
         for deletion in deletions:
             self.logger.info('site: %s\tdataset: %s', deletions[1], deletions[0])
         #self.delete(deletions)
-        self.subscribe(subscriptions)
+        #self.subscribe(subscriptions)
         t2 = datetime.datetime.utcnow()
         td = t2 - t1
         self.logger.info('Rocker Board took %s', str(td))
@@ -104,8 +104,6 @@ class RockerBoard(object):
             subscriptions.append(subscription)
             subscribed_gb += size_gb
             avail_storage_gb = self.sites.get_available_storage(site_name)
-            self.logger.info('rank: %s\tsize: %.2fGB\tdataset: %s', dataset_rankings[dataset_name], size_gb, dataset_name)
-            self.logger.info('rank: %s\tstorage: %dGB\t\site: %s', site_rankings[site_name], avail_storage_gb, site_name)
             new_avail_storage_tb = (avail_storage_gb - size_gb)/10**3
             avail_storage_tb = avail_storage_gb/10**3
             new_rank = (site_rankings[site_name]/avail_storage_tb)*new_avail_storage_tb
@@ -181,15 +179,15 @@ class RockerBoard(object):
                 self.logger.warning('Subscription did not succeed\n\tSite:%s\n\tDatasets: %s', str(site_name), str(dataset_names))
                 continue
             for dataset_name in dataset_names:
-                coll = 'dataset_popularity'
+                coll = 'dataset_rankings'
                 date = datetime_day(datetime.datetime.utcnow())
                 pipeline = list()
                 match = {'$match':{'name':dataset_name, 'date':date}}
                 pipeline.append(match)
-                project = {'$project':{'popularity':1, '_id':0}}
+                project = {'$project':{'delta_rank':1, '_id':0}}
                 pipeline.append(project)
                 data = self.storage.get_data(coll=coll, pipeline=pipeline)
-                dataset_rank = data[0]['popularity']
+                dataset_rank = data[0]['delta_rank']
                 query = "INSERT INTO Requests(RequestId, RequestType, DatasetId, SiteId, GroupId, Rank, Date) SELECT %s, %s, Datasets.DatasetId, Sites.SiteId, Groups.GroupId, %s, %s FROM Datasets, Sites, Groups WHERE Datasets.DatasetName=%s AND Sites.SiteName=%s AND Groups.GroupName=%s"
                 values = (request_id, request_type, dataset_rank, request_created, dataset_name, site_name, group_name)
                 self.mit_db.query(query=query, values=values, cache=False)
@@ -226,15 +224,15 @@ class RockerBoard(object):
                 self.logger.warning('Deletion did not succeed\n\tSite:%s\n\tDatasets: %s', str(site_name), str(dataset_names))
                 continue
             for dataset_name in dataset_names:
-                coll = 'dataset_popularity'
+                coll = 'dataset_rankings'
                 date = datetime_day(datetime.datetime.utcnow())
                 pipeline = list()
                 match = {'$match':{'name':dataset_name, 'date':date}}
                 pipeline.append(match)
-                project = {'$project':{'popularity':1, '_id':0}}
+                project = {'$project':{'delta_rank':1, '_id':0}}
                 pipeline.append(project)
                 data = self.storage.get_data(coll=coll, pipeline=pipeline)
-                dataset_rank = data[0]['popularity']
+                dataset_rank = data[0]['delta_rank']
                 query = "INSERT INTO Requests(RequestId, RequestType, DatasetId, SiteId, GroupId, Rank, Date) SELECT %s, %s, Datasets.DatasetId, Sites.SiteId, Groups.GroupId, %s, %s FROM Datasets, Sites, Groups WHERE Datasets.DatasetName=%s AND Sites.SiteName=%s AND Groups.GroupName=%s"
                 values = (request_id, request_type, dataset_rank, request_created, dataset_name, site_name, group_name)
                 self.mit_db.query(query=query, values=values, cache=False)

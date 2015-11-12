@@ -42,7 +42,7 @@ def export_json(data, path='/var/lib/cuadrnt', file_name='data'):
     """
     Export JSON data to a file using dump
     """
-    export_file = '%s/%s.csv' % (path, file_name)
+    export_file = '%s/%s.json' % (path, file_name)
     logger.debug('Exporting to file: %s', export_file)
     fd = open(export_file, 'w')
     json.dump(data, fd)

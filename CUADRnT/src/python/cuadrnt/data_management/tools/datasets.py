@@ -31,6 +31,7 @@ class DatasetManager(object):
         self.dbs = DBSService(self.config)
         self.storage = StorageManager(self.config)
         self.sites = SiteManager(self.config)
+        self.valid_tiers = config['tools']['valid_tiers'].split(',')
         self.MAX_THREADS = int(config['threading']['max_threads'])
 
     def initiate_db(self):
@@ -101,7 +102,7 @@ class DatasetManager(object):
                 coll = 'dataset_data'
                 query = {'name':dataset_name}
                 data = {'$set':{'replicas':replicas}}
-                data = self.storage.update_data(coll=coll, query=query, data=data, upsert=False)
+                data = self.storage.update_data(coll=coll, query=query, data=data)
         q.join()
         deprecated_datasets = dataset_names - current_datasets
         for dataset_name in deprecated_datasets:
@@ -131,6 +132,7 @@ class DatasetManager(object):
                 replicas = self.get_replicas(dataset_data)
                 query = {'name':dataset_name}
                 data = {'$set':{'name':dataset_name, 'replicas':replicas}}
+                data = self.storage.update_data(coll=coll, query=query, data=data)
             except:
                 coll = 'dataset_data'
                 query = {'name':dataset_name}
@@ -198,6 +200,8 @@ class DatasetManager(object):
         """
         coll = 'dataset_data'
         pipeline = list()
+        match = {'$match':{'data_tier': {'$in':self.valid_tiers}}}
+        pipeline.append(match)
         project = {'$project':{'name':1, '_id':0}}
         pipeline.append(project)
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
@@ -245,7 +249,7 @@ class DatasetManager(object):
         """
         coll = 'dataset_data'
         pipeline = list()
-        group = {'$group':{'_id':'$name', 'n_replicas':{'$first':{'$size':{'$replicas'}}}}}
+        group = {'$group':{'_id':'$name', 'n_replicas':{'$first':{'$size':'$replicas'}}}}
         pipeline.append(group)
         project = {'$project':{'name':'$_id', 'n_replicas':1, '_id':0}}
         pipeline.append(project)

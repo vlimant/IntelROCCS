@@ -1,8 +1,7 @@
 #!/usr/bin/env python2.7
 """
-File       : initiate.py
-Author     : Bjorn Barrefors <bjorn dot peter dot barrefors AT cern dot ch>
-Description: Initiate database
+File       : ml_training.py
+Author     : Train ML classifier
 """
 
 # system modules
@@ -14,65 +13,64 @@ from logging.handlers import TimedRotatingFileHandler
 
 # package modules
 from cuadrnt.utils.config import get_config
-from cuadrnt.data_management.tools.datasets import DatasetManager
-from cuadrnt.data_management.tools.sites import SiteManager
-from cuadrnt.data_management.tools.popularity import PopularityManager
+from cuadrnt.data_analysis.rankings.svm import SVMRanking
+from cuadrnt.data_analysis.rankings.naive_bayes import NaiveBayesRanking
 
-class Initiate(object):
+class MLTraining(object):
     """
-    Initiate Database
+    Generate ML datasets
     """
     def __init__(self, config=dict()):
         self.logger = logging.getLogger(__name__)
         self.config = config
-        self.sites = SiteManager(self.config)
-        self.datasets = DatasetManager(self.config)
-        self.popularity = PopularityManager(self.config)
+        self.svm_rankings = SVMRanking(self.config)
+        self.naive_bayes_rankings = NaiveBayesRanking(self.config)
 
     def start(self):
         """
-        Begin Initiating Database
+        Begin Collecting data for visualization
         """
         t1 = datetime.datetime.utcnow()
-        # self.sites.initiate_db()
-        # self.datasets.initiate_db()
-        self.popularity.initiate_db()
+        self.svm_rankings.train()
+        self.svm_rankings.test()
+        #self.naive_bayes_rankings.train()
+        #self.naive_bayes_rankings.test()
         t2 = datetime.datetime.utcnow()
         td = t2 - t1
-        self.logger.info('Initiate took %s', str(td))
+        self.logger.info('ML Training took %s', str(td))
 
 def main(argv):
     """
-    Main driver for Initiate
+    Main driver for ML Trainer
     """
     log_level = logging.WARNING
     config = get_config(path='/var/opt/cuadrnt', file_name='cuadrnt.cfg')
     try:
         opts, args = getopt.getopt(argv, 'h', ['help', 'log='])
     except getopt.GetoptError:
-        print "usage: initiate.py [--log=notset|debug|info|warning|error|critical]"
-        print "   or: initiate.py --help"
+        print "usage: ml_training.py [--log=notset|debug|info|warning|error|critical]"
+        print "   or: ml_training.py --help"
         sys.exit()
     for opt, arg in opts:
         if opt in ('-h', '--help'):
-            print "usage: initiate.py [--log=notset|debug|info|warning|error|critical]"
-            print "   or: initiate.py --help"
+            print "usage: ml_training.py [--log=notset|debug|info|warning|error|critical]"
+            print "   or: ml_training.py --help"
             sys.exit()
         elif opt in ('--log'):
             log_level = getattr(logging, arg.upper())
             if not isinstance(log_level, int):
                 print "%s is not a valid log level" % (str(arg))
-                print "usage: initiate.py [--log=notset|debug|info|warning|error|critical]"
-                print "   or: initiate.py --help"
+                print "usage: ml_training.py [--log=notset|debug|info|warning|error|critical]"
+                print "   or: ml_training.py --help"
                 sys.exit()
         else:
-            print "usage: initiate.py [--log=notset|debug|info|warning|error|critical]"
-            print "   or: initiate.py --help"
+            print "usage: ml_training.py [--log=notset|debug|info|warning|error|critical]"
+            print "   or: ml_training.py --help"
             print "error: option %s not recognized" % (str(opt))
             sys.exit()
 
     log_path = config['paths']['log']
-    log_file = 'initiate.log'
+    log_file = 'ml_training.log'
     file_name = '%s/%s' % (log_path, log_file)
     logger = logging.getLogger()
     logger.setLevel(log_level)
@@ -80,8 +78,8 @@ def main(argv):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s:%(funcName)s:%(lineno)d: %(message)s', datefmt='%H:%M')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-    initiate = Initiate(config)
-    initiate.start()
+    ml_training = MLTraining(config)
+    ml_training.start()
 
 if __name__ == "__main__":
     main(sys.argv[1:])

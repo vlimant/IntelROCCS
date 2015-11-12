@@ -63,6 +63,7 @@ class PopularityManager(object):
         coll = 'dataset_popularity'
         while True:
             date = q.get()
+            self.logger.info('Inserting date %s', datetime_to_string(date))
             api = 'DSStatInTimeWindow/'
             tstart = datetime_to_string(date)
             tstop = tstart
@@ -105,6 +106,7 @@ class PopularityManager(object):
             worker = threading.Thread(target=self.insert_popularity_data, args=(i, q))
             worker.daemon = True
             worker.start()
+        start_date = start_date + datetime.timedelta(days=1)
         end_date = datetime_day(datetime.datetime.utcnow())
         # fetch popularity data
         t1 = datetime.datetime.utcnow()

@@ -178,11 +178,16 @@ def main(argv):
     install_requires = [
         'setuptools',
         'pymongo',
-        'MySQL-python'
+        'MySQL-python',
+        'sklearn',
     ]
+    # numpy should also be installed but seems to be some bug in setuptools to install it
     packages = find_packages('src/python')
-    data_files = [('/usr/local/bin', find_files('bin')),
-                  ('/var/opt/cuadrnt', find_files('etc'))]
+    data_files = [
+        ('/usr/local/bin', find_files('bin')),
+        ('/var/opt/cuadrnt', find_files('etc')),
+        ('/var/lib/cuadrnt', find_files('data'))
+    ]
     scripts = []
     cms_license = 'CMS experiment software'
     classifiers = [
@@ -196,15 +201,9 @@ def main(argv):
         'Topic :: System :: Distributed Computing'
     ]
 
-    # Make sure the permissions are correct for folders
-    uid = pwd.getpwnam(username).pw_uid
-    gid = grp.getgrnam(group).gr_gid
+    # Make sure folders exist
     mkpath('/var/lib/cuadrnt')
     mkpath('/var/log/cuadrnt')
-    os.chown('/var/lib/cuadrnt', uid, gid)
-    os.chown('/var/log/cuadrnt', uid, gid)
-
-    # TODO: Install requirements
 
     setup(
         name=name,
@@ -225,6 +224,22 @@ def main(argv):
         url=url,
         license=cms_license,
     )
+
+    # Make sure the permissions are correct for folders
+    uid = pwd.getpwnam(username).pw_uid
+    gid = grp.getgrnam(group).gr_gid
+    path = '/var/lib/cuadrnt'
+    for root, dirs, files in os.walk(path):
+        for momo in dirs:
+            os.chown(os.path.join(root, momo), uid, gid)
+        for momo in files:
+            os.chown(os.path.join(root, momo), uid, gid)
+    path = '/var/log/cuadrnt'
+    for root, dirs, files in os.walk(path):
+        for momo in dirs:
+            os.chown(os.path.join(root, momo), uid, gid)
+        for momo in files:
+            os.chown(os.path.join(root, momo), uid, gid)
 
 if __name__ == "__main__":
     main(sys.argv[1:])

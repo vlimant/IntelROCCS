@@ -47,8 +47,6 @@ var dl_file = null;
 
 d3.json("./data_visualization.json", function(error, raw_data) {
     // Parse data
-    var max_cpu = d3.max(raw_data, function(d) { return d3.max(d.popularity, function(d2) { return d2.n_cpus; }); });
-    var max_access = d3.max(raw_data, function(d) { return d3.max(d.popularity, function(d2) { return d2.n_accesses; }); });
     data = [];
     raw_data.forEach(function(entry) {
         dataset_name = entry.dataset_name;
@@ -57,6 +55,8 @@ d3.json("./data_visualization.json", function(error, raw_data) {
         physics_group = entry.physics_group;
         ds_type = entry.ds_type;
         data_tier = entry.data_tier;
+        max_cpu = d3.max(entry.popularity, function(d) { return d.n_cpus; });
+        max_access = d3.max(entry.popularity, function(d) { return d.n_accesses; });
         popularity = [];
         entry.popularity.forEach(function(pop_entry) {
             date = date_parser(pop_entry.date);
@@ -73,11 +73,6 @@ d3.json("./data_visualization.json", function(error, raw_data) {
         });
         dataset_data = {
             "dataset_name": dataset_name,
-            "size_gb": size_gb,
-            "n_files": n_files,
-            "physics_group": physics_group,
-            "ds_type": ds_type,
-            "data_tier": data_tier,
             "popularity": popularity
         };
         data.push(dataset_data);
@@ -115,6 +110,15 @@ d3.json("./data_visualization.json", function(error, raw_data) {
         .attr("id", "access_line")
         .attr("class", "line");
 
+    chart.append("text")
+        .attr("id", "dataset_name")
+        .attr("x", margin.left)
+        .attr("y", margin.top)
+        .attr("dy", 15)
+        .attr("dx", 30)
+        .style("text-anchor", "start")
+        .text("");
+
     plot_dataset(dataset);
 });
 
@@ -122,9 +126,14 @@ function plot_dataset(dataset_num) {
     var chart = d3.select("body").transition();
 
     dataset_data = data[dataset_num];
-    x_axis.ticks(dataset_data.popularity.length);
+    x_axis.ticks(d3.time.day, 7);
     x_scale.domain([d3.min(dataset_data.popularity, function(d) { return d.date; }), d3.max(dataset_data.popularity, function(d) { return d.date; })]);
     y_scale.domain([0, 1]);
+
+    max_cpu = d3.max(dataset_data.popularity, function(d) { return d.n_cpus; });
+    max_access = d3.max(dataset_data.popularity, function(d) { return d.n_accesses; });
+
+    var dataset_text = '#' + dataset_num + ' : ' + dataset_data.dataset_name + ' | Max Accesses: ' + max_access + ' | Max CPU: ' + max_cpu;
 
     chart.select("#cpu_line")
         .duration(750)
@@ -138,6 +147,8 @@ function plot_dataset(dataset_num) {
     chart.select("#y_axis")
         .duration(750)
         .call(y_axis);
+    chart.select("#dataset_name")
+        .text(dataset_text);
 }
 
 function make_file() {
