@@ -11,6 +11,7 @@ import sys
 import json
 import getopt
 import datetime
+from math import log
 from logging.handlers import TimedRotatingFileHandler
 
 # package modules
@@ -43,8 +44,10 @@ class Preprocess(object):
         classifications = json.load(fd)
         fd.close()
         for data_tier in self.data_tiers:
-            X = list()
-            Y = list()
+            X_trend = list()
+            X_avg = list()
+            Y_trend = list()
+            Y_avg = list()
             for classification in classifications:
                 dataset_name = classification['dataset_name']
                 dataset_features = self.datasets.get_dataset_features(dataset_name)
@@ -52,29 +55,28 @@ class Preprocess(object):
                     continue
                 date = datetime.datetime.strptime(classification['date'].split('T')[0], '%Y-%m-%d')
                 class_str = classification['classification']
-                if class_str == 'unchanged':
-                    y = 0
-                elif class_str == 'increasing':
-                    y = 1
-                elif class_str == 'decreasing':
-                    y = -1
-                x = self.get_x(dataset_name, date)
-                Y.append(y)
-                X.append(x)
-            training_data = {'features':X, 'classifications':Y}
+                y_trend = self.get_y_trend(class_str)
+                y_avg = self.get_y_avg(dataset_name, date)
+                x_trend = self.get_x_trend(dataset_name, date)
+                x_avg = self.get_x_avg(dataset_name, date)
+                Y_trend.append(y_trend)
+                Y_avg.append(y_avg)
+                X_trend.append(x_trend)
+                X_avg.append(x_avg)
+            training_data = {'trend_features':X_trend, 'avg_features':X_avg, 'trend_classifications':Y_trend, 'avg_classifications':Y_avg}
             file_name = 'training_data_' + data_tier
             export_json(data=training_data, file_name=file_name)
-            self.logger.info('There are a total of %d training sets for data tier %s', len(training_data['classifications']), data_tier)
+            self.logger.info('There are a total of %d training sets for data tier %s', len(training_data['trend_classifications']), data_tier)
         t2 = datetime.datetime.utcnow()
         td = t2 - t1
         self.logger.info('Preprocess data took %s', str(td))
 
-    def get_x(self, dataset_name, start_date):
+    def get_x_trend(self, dataset_name, start_date):
         """
         Get popularity data for 7 days beginning at date for dataset
         """
         x = list()
-        end_date = start_date + datetime.timedelta(days=6)
+        end_date = start_date + datetime.timedelta(days=7)
         for date in daterange(start_date, end_date):
             coll = 'dataset_popularity'
             pipeline = list()
@@ -85,13 +87,73 @@ class Preprocess(object):
             project = {'$project':{'n_accesses':1, 'n_cpus':1, '_id':0}}
             pipeline.append(project)
             data = self.storage.get_data(coll=coll, pipeline=pipeline)
-            if not data:
-                x.append(0)
-                x.append(0)
-            else:
-                x.append(data[0]['n_accesses'])
-                x.append(data[0]['n_cpus'])
+            try:
+                x1 = log(data[0]['n_accesses'])
+                x2 = log(data[0]['n_cpus'])
+            except:
+                x1 = 0.0
+                x2 = 0.0
+            x.append(x1)
+            x.append(x2)
         return x
+
+    def get_x_avg(self, dataset_name, start_date):
+        """
+        Get popularity data for 7 days beginning at date for dataset
+        """
+        x = list()
+        end_date = start_date + datetime.timedelta(days=7)
+        for date in daterange(start_date, end_date):
+            coll = 'dataset_popularity'
+            pipeline = list()
+            match = {'$match':{'name':dataset_name}}
+            pipeline.append(match)
+            match = {'$match':{'date':date}}
+            pipeline.append(match)
+            project = {'$project':{'n_accesses':1, 'n_cpus':1, '_id':0}}
+            pipeline.append(project)
+            data = self.storage.get_data(coll=coll, pipeline=pipeline)
+            try:
+                x.append(log(int(data[0]['n_accesses']))*log(int(data[0]['n_cpus'])))
+            except:
+                x.append(0.0)
+        return x
+
+    def get_y_trend(self, class_str):
+        """
+        Get classification from string
+        """
+        if class_str == 'unchanged':
+            y = 0
+        elif class_str == 'increasing':
+            y = 1
+        elif class_str == 'decreasing':
+            y = -1
+        else:
+            y = 0
+        return y
+
+    def get_y_avg(self, dataset_name, start_date):
+        """
+        Get average popularity for 7 days beginning at date+7 days for dataset
+        popularity = n_accesses*n_cpus
+        """
+        start_date = start_date + datetime.timedelta(days=6)
+        end_date = start_date + datetime.timedelta(days=7)
+        coll = 'dataset_popularity'
+        pipeline = list()
+        match = {'$match':{'name':dataset_name}}
+        pipeline.append(match)
+        match = {'$match':{'date':{'$gte':start_date, '$lte':end_date}}}
+        pipeline.append(match)
+        group = {'$group':{'_id':'$name', 'avg_popularity':{'$avg': {'$multiply':['$n_accesses', '$n_cpus']}}}}
+        pipeline.append(group)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        try:
+            y = log(int(data[0]['avg_popularity']))
+        except:
+            y = 0.0
+        return y
 
 def main(argv):
     """

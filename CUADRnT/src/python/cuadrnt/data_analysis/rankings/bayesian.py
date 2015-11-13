@@ -1,8 +1,8 @@
 #!/usr/bin/env python2.7
 """
-File       : svm.py
+File       : bayesian.py
 Author     : Bjorn Barrefors <bjorn dot peter dot barrefors AT cern dot ch>
-Description: SVM ranking algorithm
+Description: Bayesian based ranking algorithm
 """
 
 # system modules
@@ -11,23 +11,22 @@ import datetime
 import json
 import math
 import numpy as np
-from sklearn.svm import SVC
-from sklearn.svm import SVR
+from sklearn.naive_bayes import GaussianNB
+from sklearn.linear_model import BayesianRidge
 from sklearn.externals import joblib
 
 # package modules
-# from cuadrnt.utils.utils import datetime_day
 from cuadrnt.data_analysis.rankings.generic import GenericRanking
 
-class SVMRanking(GenericRanking):
+class BayesianRanking(GenericRanking):
     """
-    Use Support Vector Machines to rank datasets and sites
+    Use Naive Bayes and Bayesian Ridge to rank datasets and sites
     Subclass of GenericRanking
     """
     def __init__(self, config=dict()):
         GenericRanking.__init__(self, config)
         self.logger = logging.getLogger(__name__)
-        self.name = 'svm'
+        self.name = 'bayesian'
         self.data_path = self.config['paths']['data']
         self.data_tiers = config['tools']['valid_tiers'].split(',')
         self.preprocessed_data = dict()
@@ -35,12 +34,12 @@ class SVMRanking(GenericRanking):
         self.clf_avg = dict()
         for data_tier in self.data_tiers:
             try:
-                self.clf_trend[data_tier] = joblib.load(self.data_path + 'svm_trend_' + data_tier + '.pkl')
-                self.clf_avg[data_tier] = joblib.load(self.data_path + 'svm_avg_' + data_tier + '.pkl')
+                self.clf_trend[data_tier] = joblib.load(self.data_path + 'bayesian_trend_' + data_tier + '.pkl')
+                self.clf_avg[data_tier] = joblib.load(self.data_path + 'bayesian_avg_' + data_tier + '.pkl')
             except:
-                self.logger.info('SVM classifier and regressor for data tier %s need to be trained', data_tier)
-                self.clf_trend[data_tier] = SVC(kernel='poly', probability=True, C=0.5)
-                self.clf_avg[data_tier] = SVR()
+                self.logger.info('Bayesian classifier and regressor for data tier %s need to be trained', data_tier)
+                self.clf_trend[data_tier] = GaussianNB()
+                self.clf_avg[data_tier] = BayesianRidge()
 
     def get_dataset_popularity(self, dataset_name):
         """
@@ -71,9 +70,9 @@ class SVMRanking(GenericRanking):
             self.clf_avg[data_tier].fit(avg_training_features, avg_training_classifications)
             t2 = datetime.datetime.utcnow()
             td = t2 - t1
-            self.logger.info('Training SVM for data tier %s took %s', data_tier, str(td))
-            #joblib.dump(self.clf_trend[data_tier], self.data_path + 'svm_trend_' + data_tier + '.pkl')
-            #joblib.dump(self.clf_avg[data_tier], self.data_path + 'svm_avg_' + data_tier + '.pkl')
+            self.logger.info('Training Bayesian models for data tier %s took %s', data_tier, str(td))
+            #joblib.dump(self.clf_trend[data_tier], self.data_path + 'bayesian_trend_' + data_tier + '.pkl')
+            #joblib.dump(self.clf_avg[data_tier], self.data_path + 'bayesian_avg_' + data_tier + '.pkl')
 
     def test(self):
         """
@@ -88,5 +87,5 @@ class SVMRanking(GenericRanking):
             avg_test_classifications = np.array(self.preprocessed_data[data_tier]['avg_classifications'][p:])
             accuracy_trend = self.clf_trend[data_tier].score(trend_test_features, trend_test_classifications)
             accuracy_avg = self.clf_avg[data_tier].score(avg_test_features, avg_test_classifications)
-            self.logger.info('The accuracy of SVM trend classifier for data tier %s is %.3f', data_tier, accuracy_trend)
-            self.logger.info('The accuracy of SVM avg regressor for data tier %s is %.3f', data_tier, accuracy_avg)
+            self.logger.info('The accuracy of Naive Bayes trend classifier for data tier %s is %.3f', data_tier, accuracy_trend)
+            self.logger.info('The accuracy of Bayesian Ridge avg regressor for data tier %s is %.3f', data_tier, accuracy_avg)

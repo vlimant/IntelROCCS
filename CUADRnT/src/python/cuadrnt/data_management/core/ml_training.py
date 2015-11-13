@@ -14,7 +14,7 @@ from logging.handlers import TimedRotatingFileHandler
 # package modules
 from cuadrnt.utils.config import get_config
 from cuadrnt.data_analysis.rankings.svm import SVMRanking
-from cuadrnt.data_analysis.rankings.naive_bayes import NaiveBayesRanking
+from cuadrnt.data_analysis.rankings.bayesian import BayesianRanking
 
 class MLTraining(object):
     """
@@ -24,7 +24,7 @@ class MLTraining(object):
         self.logger = logging.getLogger(__name__)
         self.config = config
         self.svm_rankings = SVMRanking(self.config)
-        self.naive_bayes_rankings = NaiveBayesRanking(self.config)
+        self.bayesian_rankings = BayesianRanking(self.config)
 
     def start(self):
         """
@@ -33,8 +33,8 @@ class MLTraining(object):
         t1 = datetime.datetime.utcnow()
         self.svm_rankings.train()
         self.svm_rankings.test()
-        #self.naive_bayes_rankings.train()
-        #self.naive_bayes_rankings.test()
+        self.bayesian_rankings.train()
+        self.bayesian_rankings.test()
         t2 = datetime.datetime.utcnow()
         td = t2 - t1
         self.logger.info('ML Training took %s', str(td))
