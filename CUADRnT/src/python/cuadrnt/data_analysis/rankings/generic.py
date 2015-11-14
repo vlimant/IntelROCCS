@@ -8,10 +8,12 @@ Description: Generic class for all ranking algorithms
 # system modules
 import logging
 import datetime
-import operator
+import json
+import math
+import numpy as np
+from sklearn.externals import joblib
 
 # package modules
-from cuadrnt.utils.utils import datetime_day
 from cuadrnt.data_management.tools.sites import SiteManager
 from cuadrnt.data_management.tools.datasets import DatasetManager
 from cuadrnt.data_management.tools.popularity import PopularityManager
@@ -30,119 +32,59 @@ class GenericRanking(object):
         self.storage = StorageManager(self.config)
         self.max_replicas = int(config['rocker_board']['max_replicas'])
         self.name = 'generic'
+        self.data_path = self.config['paths']['data']
+        self.data_tiers = config['tools']['valid_tiers'].split(',')
+        self.preprocessed_data = dict()
+        self.clf_trend = dict()
+        self.clf_avg = dict()
 
-    def get_dataset_rankings(self):
+    def predict_trend(self, features, data_tier):
         """
-        Generate dataset rankings
+        Predict trend based on features
         """
-        date = datetime_day(datetime.datetime.utcnow())
-        rank_name = self.name + '_rank'
-        popularity_name = self.name + '_popularity'
-        dataset_names = self.datasets.get_db_datasets()
-        dataset_popularity = dict()
-        for dataset_name in dataset_names:
-            popularity = self.get_dataset_popularity(dataset_name)
-            dataset_popularity[dataset_name] = popularity
-        dataset_rankings = self.normalize_popularity(dataset_popularity)
-        # store in database
-        for dataset_name, popularity in dataset_popularity.items():
-            rank = dataset_rankings[dataset_name]
-            coll = 'dataset_rankings'
-            query = data = {'name':dataset_name, 'date':date}
-            data = {'$set':{'name':dataset_name, 'date':date, rank_name:rank, popularity_name:popularity}}
-            self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
-        return dataset_rankings
+        prediction = self.clf_trend[data_tier].predict(features)
+        return prediction
 
-    def get_site_rankings(self):
+    def predict_avg(self, features, data_tier):
         """
-        Generate site rankings
+        Predict trend based on features
         """
-        date = datetime_day(datetime.datetime.utcnow())
-        rank_name = self.name + '_rank'
-        popularity_name = self.name + '_popularity'
-        # get all sites which can be replicated to
-        site_names = self.sites.get_available_sites()
-        site_rankings = dict()
-        for site_name in site_names:
-            # get popularity
-            popularity = self.get_site_popularity(site_name)
-            # get cpu and storage (performance)
-            performance = self.sites.get_performance(site_name)
-            # get available storage
-            available_storage_tb = self.sites.get_available_storage(site_name)/10**3
-            if available_storage_tb <= 0:
-                available_storage_tb = 0
-            else:
-                available_storage_tb = 1
-            #calculate rank
-            try:
-                rank = (performance*available_storage_tb)/popularity
-            except:
-                rank = 0.0
-            # store into dict
-            site_rankings[site_name] = rank
-            # insert into database
-            coll = 'site_rankings'
-            query = {'name':site_name, 'date':date}
-            data = {'$set':{'name':site_name, 'date':date, rank_name:rank, popularity_name:popularity}}
-            self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
-        return site_rankings
+        prediction = self.clf_avg[data_tier].predict(features)
+        return prediction
 
-    def get_site_popularity(self, site_name):
+    def train(self):
         """
-        Get delta popularity for site
+        Training classifier and regressor
         """
-        date = datetime_day(datetime.datetime.utcnow())
-        rank_name = self.name + '_rank'
-        # get all datasets with a replica at the site and how many replicas it has
-        coll = 'dataset_data'
-        pipeline = list()
-        match = {'$match':{'replicas':site_name}}
-        pipeline.append(match)
-        project = {'$project':{'name':1, '_id':0}}
-        pipeline.append(project)
-        data = self.storage.get_data(coll=coll, pipeline=pipeline)
-        popularity = 0.0
-        for dataset in data:
-            dataset_name = dataset['name']
-            # get the popularity of the dataset and dicide by number of replicas
-            coll = 'dataset_rankings'
-            pipeline = list()
-            match = {'$match':{'name':dataset_name, 'date':date}}
-            pipeline.append(match)
-            project = {'$project':{rank_name:1, '_id':0}}
-            pipeline.append(project)
-            data = self.storage.get_data(coll=coll, pipeline=pipeline)
-            popularity += data[0][rank_name]
-        return popularity
+        for data_tier in self.data_tiers:
+            fd = open(self.data_path + '/training_data_' + data_tier + '.json', 'r')
+            self.preprocessed_data[data_tier] = json.load(fd)
+            fd.close()
+            tot = len(self.preprocessed_data[data_tier]['features'])
+            p = int(math.ceil(tot*0.8))
+            training_features = np.array(self.preprocessed_data[data_tier]['features'][:p])
+            trend_training_classifications = np.array(self.preprocessed_data[data_tier]['trend_classifications'][:p])
+            avg_training_classifications = np.array(self.preprocessed_data[data_tier]['avg_classifications'][:p])
+            t1 = datetime.datetime.utcnow()
+            self.clf_trend[data_tier].fit(training_features, trend_training_classifications)
+            self.clf_avg[data_tier].fit(training_features, avg_training_classifications)
+            t2 = datetime.datetime.utcnow()
+            td = t2 - t1
+            self.logger.info('Training %s for data tier %s took %s', self.name, data_tier, str(td))
+            joblib.dump(self.clf_trend[data_tier], self.data_path + self.name + '_trend_' + data_tier + '.pkl')
+            joblib.dump(self.clf_avg[data_tier], self.data_path + self.name + '_avg_' + data_tier + '.pkl')
 
-    def get_site_storage_rankings(self, subscriptions):
+    def test(self):
         """
-        Return the amount over the soft limit sites are including new subscriptions
-        If site is not over just set to 0
+        Test accuracy/score of classifier and regressor
         """
-        site_rankings = dict()
-        available_sites = self.sites.get_available_sites()
-        for site_name in available_sites:
-            site_rankings[site_name] = self.sites.get_over_soft_limit(site_name)
-        for subscription in subscriptions:
-            site_rankings[subscription[1]] += self.datasets.get_size(subscription[0])
-        for site_name in available_sites:
-            if site_rankings[site_name] < 0:
-                del site_rankings[site_name]
-        return site_rankings
-
-    def normalize_popularity(self, dataset_popularity):
-        """
-        Normalize popularity values to be between 1 and max_replicas
-        """
-        dataset_rankings = dict()
-        max_pop = max(dataset_popularity.iteritems(), key=operator.itemgetter(1))[1]
-        min_pop = min(dataset_popularity.iteritems(), key=operator.itemgetter(1))[1]
-        n = float(min_pop + (self.max_replicas - 1))/max_pop
-        m = 1 - n*min_pop
-        for dataset_name, popularity in dataset_popularity.items():
-            # store into dict
-            rank = n*dataset_popularity[dataset_name] + m
-            dataset_rankings[dataset_name] = int(rank)
-        return dataset_rankings
+        for data_tier in self.data_tiers:
+            tot = len(self.preprocessed_data[data_tier]['features'])
+            p = int(math.floor(tot*0.2))
+            test_features = np.array(self.preprocessed_data[data_tier]['features'][p:])
+            trend_test_classifications = np.array(self.preprocessed_data[data_tier]['trend_classifications'][p:])
+            avg_test_classifications = np.array(self.preprocessed_data[data_tier]['avg_classifications'][p:])
+            accuracy_trend = self.clf_trend[data_tier].score(test_features, trend_test_classifications)
+            accuracy_avg = self.clf_avg[data_tier].score(test_features, avg_test_classifications)
+            self.logger.info('The accuracy of %s trend classifier for data tier %s is %.3f', self.name, data_tier, accuracy_trend)
+            self.logger.info('The accuracy of %s avg regressor for data tier %s is %.3f', self.name, data_tier, accuracy_avg)

@@ -217,19 +217,6 @@ class DatasetManager(object):
         query = {'name':dataset_name}
         self.storage.delete_data(coll=coll, query=query)
 
-    def get_n_files(self, dataset_name):
-        """
-        Get the number of files in the block
-        """
-        coll = 'dataset_data'
-        pipeline = list()
-        match = {'$match':{'name':dataset_name}}
-        pipeline.append(match)
-        project = {'$project':{'n_files':1, '_id':0}}
-        pipeline.append(project)
-        data = self.storage.get_data(coll=coll, pipeline=pipeline)
-        return data[0]['n_files']
-
     def get_dataset_features(self, dataset_name):
         """
         Get dataset features for dataset from db
@@ -243,18 +230,31 @@ class DatasetManager(object):
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
         return data[0]
 
-    def get_current_num_replicas(self):
+    def get_n_files(self, dataset_name):
         """
-        Get the current number of replicas for all replicas
+        Get the number of files in the block
         """
         coll = 'dataset_data'
         pipeline = list()
-        group = {'$group':{'_id':'$name', 'n_replicas':{'$first':{'$size':'$replicas'}}}}
-        pipeline.append(group)
-        project = {'$project':{'name':'$_id', 'n_replicas':1, '_id':0}}
+        match = {'$match':{'name':dataset_name}}
+        pipeline.append(match)
+        project = {'$project':{'n_files':1, '_id':0}}
         pipeline.append(project)
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
-        return data
+        return data[0]['n_files']
+
+    def get_data_tier(self, dataset_name):
+        """
+        Get the number of files in the block
+        """
+        coll = 'dataset_data'
+        pipeline = list()
+        match = {'$match':{'name':dataset_name}}
+        pipeline.append(match)
+        project = {'$project':{'data_tier':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        return data[0]['data_tier']
 
     def get_sites(self, dataset_name):
         """
@@ -283,3 +283,16 @@ class DatasetManager(object):
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
         size_gb = float(data[0]['size_bytes'])/10**9
         return size_gb
+
+    def get_current_num_replicas(self):
+        """
+        Get the current number of replicas for all replicas
+        """
+        coll = 'dataset_data'
+        pipeline = list()
+        group = {'$group':{'_id':'$name', 'n_replicas':{'$first':{'$size':'$replicas'}}}}
+        pipeline.append(group)
+        project = {'$project':{'name':'$_id', 'n_replicas':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        return data

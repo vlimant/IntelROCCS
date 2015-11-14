@@ -10,6 +10,7 @@ import logging
 import datetime
 import Queue
 import threading
+from math import log
 
 # package modules
 # from cuadrnt.utils.utils import pop_db_timestamp_to_datetime
@@ -151,3 +152,47 @@ class PopularityManager(object):
         pipeline.append(project)
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
         return data[0]
+
+    def get_average_popularity(self, dataset_name, date):
+        """
+        Get all popualrity data for a dataset
+        """
+        start_date = date - datetime.timedelta(days=7)
+        end_date = date - datetime.timedelta(days=1)
+        coll = 'dataset_popularity'
+        pipeline = list()
+        match = {'$match':{'name':dataset_name}}
+        pipeline.append(match)
+        match = {'$match':{'date':{'$gte':start_date, '$lte':end_date}}}
+        pipeline.append(match)
+        group = {'$group':{'_id':'$name', 'avg_popularity':{'$avg': {'$multiply':['$n_accesses', '$n_cpus']}}}}
+        pipeline.append(group)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        try:
+            avg = log(int(data[0]['avg_popularity']))
+        except:
+            avg = 0.0
+        return avg
+
+    def get_features(self,dataset_name, date):
+        """
+        Get machine learning features which are seven days of popularity
+        """
+        features = list()
+        start_date = date
+        end_date = start_date - datetime.timedelta(days=7)
+        for date in daterange(start_date, end_date):
+            coll = 'dataset_popularity'
+            pipeline = list()
+            match = {'$match':{'name':dataset_name}}
+            pipeline.append(match)
+            match = {'$match':{'date':date}}
+            pipeline.append(match)
+            project = {'$project':{'n_accesses':1, 'n_cpus':1, '_id':0}}
+            pipeline.append(project)
+            data = self.storage.get_data(coll=coll, pipeline=pipeline)
+            try:
+                features.append(log(int(data[0]['n_accesses']))*log(int(data[0]['n_cpus'])))
+            except:
+                features.append(0.0)
+        return features

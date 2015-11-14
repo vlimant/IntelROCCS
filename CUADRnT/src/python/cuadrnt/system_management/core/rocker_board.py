@@ -23,7 +23,7 @@ from cuadrnt.data_management.services.mit_db import MITDBService
 from cuadrnt.data_management.tools.datasets import DatasetManager
 from cuadrnt.data_management.tools.sites import SiteManager
 from cuadrnt.data_management.core.storage import StorageManager
-from cuadrnt.data_analysis.rankings.delta import DeltaRanking
+from cuadrnt.data_analysis.rankings.ranker import Ranker
 
 class RockerBoard(object):
     """
@@ -38,17 +38,17 @@ class RockerBoard(object):
         self.datasets = DatasetManager(self.config)
         self.sites = SiteManager(self.config)
         self.storage = StorageManager(self.config)
-        self.rankings = DeltaRanking(self.config)
+        self.rankings = Ranker(self.config)
         self.max_gb = int(self.config['rocker_board']['max_gb'])
 
-    def start(self):
+    def start(self, date=datetime_day(datetime.datetime.utcnow())):
         """
         Begin Rocker Board Algorithm
         """
         t1 = datetime.datetime.utcnow()
         # Get goals
-        dataset_rankings = self.rankings.get_dataset_rankings()
-        site_rankings = self.rankings.get_site_rankings()
+        dataset_rankings = self.rankings.get_dataset_rankings(date)
+        site_rankings = self.rankings.get_site_rankings(date)
         self.change_dataset_rankings(dataset_rankings)
         subscriptions = self.replicate(dataset_rankings, site_rankings)
         self.logger.info('SUBSCRIPTIONS')
@@ -80,6 +80,7 @@ class RockerBoard(object):
         """
         subscriptions = list()
         subscribed_gb = 0
+        sites_available_storage_gb = self.sites.get_all_available_storage()
         while (subscribed_gb < self.max_gb) or (not site_rankings):
             tmp_site_rankings = site_rankings
             dataset = max(dataset_rankings.iteritems(), key=operator.itemgetter(1))
@@ -103,11 +104,9 @@ class RockerBoard(object):
             subscription = (dataset_name, site_name)
             subscriptions.append(subscription)
             subscribed_gb += size_gb
-            avail_storage_gb = self.sites.get_available_storage(site_name)
-            new_avail_storage_tb = (avail_storage_gb - size_gb)/10**3
-            avail_storage_tb = avail_storage_gb/10**3
-            new_rank = (site_rankings[site_name]/avail_storage_tb)*new_avail_storage_tb
-            site_rankings[site_name] = new_rank
+            sites_available_storage_gb[site_name] -= size_gb
+            if sites_available_storage_gb[site_name] <= 0:
+                del site_rankings[site_name]
             dataset_rankings[dataset_name] -= 1
         self.logger.info('Subscribed %dGB', subscribed_gb)
         return subscriptions
@@ -123,22 +122,21 @@ class RockerBoard(object):
             dataset = min(dataset_rankings.iteritems(), key=operator.itemgetter(1))
             dataset_name = dataset[0]
             dataset_rank = dataset[1]
-            if (not dataset_name) or (dataset_rank > -1):
-                break
             size_gb = self.datasets.get_size(dataset_name)
             available_sites = set(self.datasets.get_sites(dataset_name))
             for site_name in available_sites:
                 try:
                     tmp_site_rankings[site_name] = site_rankings[site_name]
                 except:
-                    pass
+                    continue
             if not tmp_site_rankings:
+                del dataset_rankings[dataset_name]
                 continue
             site_name = weighted_choice(tmp_site_rankings)
             deletion = (dataset_name, site_name)
             deletions.append(deletion)
             deleted_gb += size_gb
-            self.logger.info('rank: %s\tsize: %.2f\tdataset: %s', dataset_rankings[dataset_name], size_gb, dataset_name)
+            self.logger.info('rank: %s\tsize: %.2f\tdataset: %s', dataset_rank, size_gb, dataset_name)
             self.logger.info('rank: %s\t\site: %s', site_rankings[site_name], site_name)
             site_rankings[site_name] -= size_gb
             dataset_rankings[dataset_name] += 1

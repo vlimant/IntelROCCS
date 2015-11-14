@@ -130,6 +130,16 @@ class SiteManager(object):
         available_gb = max(0, (self.hard_limit*quota_gb) - size_gb)
         return available_gb
 
+    def get_all_available_storage(self):
+        """
+        Get available storage for all sites
+        """
+        available_storage = dict()
+        available_sites = self.get_available_sites()
+        for site_name in available_sites:
+            available_storage[site_name] = self.get_available_storage(site_name)
+        return available_storage
+
     def get_over_soft_limit(self, site_name):
         """
         Get the amount of GB a site is over the soft limit i.e lower limit.

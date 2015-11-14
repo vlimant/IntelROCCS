@@ -44,8 +44,7 @@ class Preprocess(object):
         classifications = json.load(fd)
         fd.close()
         for data_tier in self.data_tiers:
-            X_trend = list()
-            X_avg = list()
+            X = list()
             Y_trend = list()
             Y_avg = list()
             for classification in classifications:
@@ -57,13 +56,11 @@ class Preprocess(object):
                 class_str = classification['classification']
                 y_trend = self.get_y_trend(class_str)
                 y_avg = self.get_y_avg(dataset_name, date)
-                x_trend = self.get_x_trend(dataset_name, date)
-                x_avg = self.get_x_avg(dataset_name, date)
+                x = self.get_x(dataset_name, date)
                 Y_trend.append(y_trend)
                 Y_avg.append(y_avg)
-                X_trend.append(x_trend)
-                X_avg.append(x_avg)
-            training_data = {'trend_features':X_trend, 'avg_features':X_avg, 'trend_classifications':Y_trend, 'avg_classifications':Y_avg}
+                X.append(x)
+            training_data = {'features':X, 'trend_classifications':Y_trend, 'avg_classifications':Y_avg}
             file_name = 'training_data_' + data_tier
             export_json(data=training_data, file_name=file_name)
             self.logger.info('There are a total of %d training sets for data tier %s', len(training_data['trend_classifications']), data_tier)
@@ -71,33 +68,7 @@ class Preprocess(object):
         td = t2 - t1
         self.logger.info('Preprocess data took %s', str(td))
 
-    def get_x_trend(self, dataset_name, start_date):
-        """
-        Get popularity data for 7 days beginning at date for dataset
-        """
-        x = list()
-        end_date = start_date + datetime.timedelta(days=7)
-        for date in daterange(start_date, end_date):
-            coll = 'dataset_popularity'
-            pipeline = list()
-            match = {'$match':{'name':dataset_name}}
-            pipeline.append(match)
-            match = {'$match':{'date':date}}
-            pipeline.append(match)
-            project = {'$project':{'n_accesses':1, 'n_cpus':1, '_id':0}}
-            pipeline.append(project)
-            data = self.storage.get_data(coll=coll, pipeline=pipeline)
-            try:
-                x1 = log(data[0]['n_accesses'])
-                x2 = log(data[0]['n_cpus'])
-            except:
-                x1 = 0.0
-                x2 = 0.0
-            x.append(x1)
-            x.append(x2)
-        return x
-
-    def get_x_avg(self, dataset_name, start_date):
+    def get_x(self, dataset_name, start_date):
         """
         Get popularity data for 7 days beginning at date for dataset
         """
