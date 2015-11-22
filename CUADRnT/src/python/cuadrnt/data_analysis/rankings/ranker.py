@@ -9,6 +9,8 @@ Description: Generic class for all ranking algorithms
 import logging
 import datetime
 import operator
+import threading
+import Queue
 
 # package modules
 from cuadrnt.utils.utils import datetime_day
@@ -33,24 +35,30 @@ class Ranker(object):
         self.svm = SVMRanking(self.config)
         self.bayesian = BayesianRanking(self.config)
         self.max_replicas = int(config['rocker_board']['max_replicas'])
+        self.MAX_THREADS = int(config['threading']['max_threads'])
+        self.dataset_popularity = dict()
+        self.dataset_features = dict()
+        self.dataset_tiers = dict()
 
     def get_dataset_rankings(self, date=datetime_day(datetime.datetime.utcnow())):
         """
         Generate dataset rankings
         """
+        self.dataset_popularity = dict()
+        self.dataset_features = dict()
+        self.dataset_tiers = dict()
         dataset_names = self.datasets.get_db_datasets()
-        dataset_popularity = dict()
+        q = Queue.Queue()
+        for i in range(self.MAX_THREADS):
+            worker = threading.Thread(target=self.get_dataset_popularity, args=(q,))
+            worker.daemon = True
+            worker.start()
+        self.dataset_features = self.popularity.get_features(dataset_names, date)
+        self.dataset_tiers = self.datasets.get_data_tiers(dataset_names)
         for dataset_name in dataset_names:
-            popularity = self.get_dataset_popularity(dataset_name, date)
-            dataset_popularity[dataset_name] = popularity
-        dataset_rankings = self.normalize_popularity(dataset_popularity)
-        # store in database
-        for dataset_name, popularity in dataset_popularity.items():
-            rank = dataset_rankings[dataset_name]
-            coll = 'dataset_rankings'
-            query = data = {'name':dataset_name, 'date':date}
-            data = {'$set':{'name':dataset_name, 'date':date, 'rank':rank, 'popularity':popularity}}
-            self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
+            q.put((dataset_name, date))
+        q.join()
+        dataset_rankings = self.normalize_popularity(date)
         return dataset_rankings
 
     def get_site_rankings(self, date=datetime_day(datetime.datetime.utcnow())):
@@ -62,7 +70,7 @@ class Ranker(object):
         site_rankings = dict()
         for site_name in site_names:
             # get popularity
-            popularity = self.get_site_popularity(site_name)
+            popularity = self.get_site_popularity(site_name, date)
             # get cpu and storage (performance)
             performance = self.sites.get_performance(site_name)
             # get available storage
@@ -85,26 +93,35 @@ class Ranker(object):
             self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
         return site_rankings
 
-    def get_dataset_popularity(self, dataset_name, date):
+    def get_dataset_popularity(self, q):
         """
         Get the estimated popularity for dataset
         """
-        # collect features
-        data_tier = self.datasets.get_data_tier(dataset_name)
-        features = []
-        # get classification prediction
-        trend = self.svm.predict_trend(features, data_tier)
-        if trend == 0:
-            # get average
-            popularity = self.popularity.get_average_popularity(dataset_name, date)
-        else:
-            # get prediction
-            popularity = self.bayesian.predict_avg(features, data_tier)
-        return popularity
+        while True:
+            # collect features
+            data = q.get()
+            dataset_name = data[0]
+            date = data[1]
+            data_tier = self.dataset_tiers[dataset_name]
+            try:
+                features = [self.dataset_features[dataset_name]]
+            except:
+                features = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
+            # get classification prediction
+            trend = self.svm.predict_trend(features, data_tier)
+            popularity = 0.0
+            if trend == 0:
+                # get average
+                popularity = self.popularity.get_average_popularity(dataset_name, date)
+            else:
+                # get prediction
+                popularity = self.bayesian.predict_avg(features, data_tier)
+            self.dataset_popularity[dataset_name] = popularity
+            q.task_done()
 
     def get_site_popularity(self, site_name, date=datetime_day(datetime.datetime.utcnow())):
         """
-        Get delta popularity for site
+        Get popularity for site
         """
         # get all datasets with a replica at the site and how many replicas it has
         coll = 'dataset_data'
@@ -115,17 +132,23 @@ class Ranker(object):
         pipeline.append(project)
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
         popularity = 0.0
-        for dataset in data:
-            dataset_name = dataset['name']
-            # get the popularity of the dataset and dicide by number of replicas
-            coll = 'dataset_rankings'
-            pipeline = list()
-            match = {'$match':{'name':dataset_name, 'date':date}}
-            pipeline.append(match)
-            project = {'$project':{'popularity':1, '_id':0}}
-            pipeline.append(project)
-            data = self.storage.get_data(coll=coll, pipeline=pipeline)
-            popularity += data[0]['popularity']
+        dataset_names = [dataset_data['name'] for dataset_data in data]
+        # get the popularity of the dataset and decide by number of replicas
+        coll = 'dataset_rankings'
+        pipeline = list()
+        match = {'$match':{'date':date}}
+        pipeline.append(match)
+        match = {'$match':{'name':{'$in':dataset_names}}}
+        pipeline.append(match)
+        group = {'$group':{'_id':'$date', 'total_popularity':{'$sum':'$popularity'}}}
+        pipeline.append(group)
+        project = {'$project':{'total_popularity':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        try:
+            popularity = data[0]['total_popularity']
+        except:
+            popularity = 0.0
         return popularity
 
     def get_site_storage_rankings(self, subscriptions):
@@ -144,17 +167,21 @@ class Ranker(object):
                 del site_rankings[site_name]
         return site_rankings
 
-    def normalize_popularity(self, dataset_popularity):
+    def normalize_popularity(self, date):
         """
         Normalize popularity values to be between 1 and max_replicas
         """
         dataset_rankings = dict()
-        max_pop = max(dataset_popularity.iteritems(), key=operator.itemgetter(1))[1]
-        min_pop = min(dataset_popularity.iteritems(), key=operator.itemgetter(1))[1]
+        max_pop = max(self.dataset_popularity.iteritems(), key=operator.itemgetter(1))[1]
+        min_pop = min(self.dataset_popularity.iteritems(), key=operator.itemgetter(1))[1]
         n = float(min_pop + (self.max_replicas - 1))/max_pop
         m = 1 - n*min_pop
-        for dataset_name, popularity in dataset_popularity.items():
+        for dataset_name, popularity in self.dataset_popularity.items():
             # store into dict
-            rank = n*dataset_popularity[dataset_name] + m
-            dataset_rankings[dataset_name] = int(rank)
+            rank = int(n*self.dataset_popularity[dataset_name] + m)
+            dataset_rankings[dataset_name] = rank
+            coll = 'dataset_rankings'
+            query = data = {'name':dataset_name, 'date':date}
+            data = {'$set':{'name':dataset_name, 'date':date, 'rank':rank, 'popularity':popularity}}
+            self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
         return dataset_rankings

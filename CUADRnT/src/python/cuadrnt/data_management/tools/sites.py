@@ -183,7 +183,7 @@ class SiteManager(object):
         try:
             quota_gb = data[0]['quota_gb']
         except:
-            return 0
+            quota_gb = 0
         return quota_gb
 
     def get_max_cpu(self, site_name):

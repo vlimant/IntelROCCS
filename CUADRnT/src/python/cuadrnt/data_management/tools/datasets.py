@@ -206,7 +206,28 @@ class DatasetManager(object):
         pipeline.append(project)
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
         dataset_names = [dataset_data['name'] for dataset_data in data]
-        self.logger.info('%d datasets present in database', len(dataset_names))
+        #self.logger.info('%d datasets present in database', len(dataset_names))
+        return dataset_names
+
+    def get_removed_db_datasets(self):
+        """
+        Get all datasets currently in database with more than one replica
+        """
+        coll = 'dataset_data'
+        pipeline = list()
+        match = {'$match':{'data_tier': {'$in':self.valid_tiers}}}
+        pipeline.append(match)
+        group = {'$group':{'_id':'$name', 'n_replicas':{'$first':{'$size':'$replicas'}}}}
+        pipeline.append(group)
+        project = {'$project':{'name':'$_id', 'n_replicas':1, '_id':0}}
+        pipeline.append(project)
+        match = {'$match': {'n_replicas':{'$gt':1}}}
+        pipeline.append(match)
+        project = {'$project':{'name':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        dataset_names = [dataset_data['name'] for dataset_data in data]
+        #self.logger.info('%d valid datasets present in database', len(dataset_names))
         return dataset_names
 
     def remove_dataset(self, dataset_name):
@@ -243,18 +264,21 @@ class DatasetManager(object):
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
         return data[0]['n_files']
 
-    def get_data_tier(self, dataset_name):
+    def get_data_tiers(self, dataset_names):
         """
-        Get the number of files in the block
+        Get the data tiers of all datasets
         """
+        dataset_tiers = dict()
         coll = 'dataset_data'
         pipeline = list()
-        match = {'$match':{'name':dataset_name}}
+        match = {'$match':{'name':{'$in':dataset_names}}}
         pipeline.append(match)
-        project = {'$project':{'data_tier':1, '_id':0}}
+        project = {'$project':{'data_tier':1, 'name':1, '_id':0}}
         pipeline.append(project)
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
-        return data[0]['data_tier']
+        for dataset in data:
+            dataset_tiers[dataset['name']] = dataset['data_tier']
+        return dataset_tiers
 
     def get_sites(self, dataset_name):
         """
@@ -286,13 +310,136 @@ class DatasetManager(object):
 
     def get_current_num_replicas(self):
         """
-        Get the current number of replicas for all replicas
+        Get the current number of replicas for all datasets
         """
+        datasets = self.get_db_datasets()
         coll = 'dataset_data'
         pipeline = list()
+        match = {'$match': {'name': {'$in':datasets}}}
+        pipeline.append(match)
         group = {'$group':{'_id':'$name', 'n_replicas':{'$first':{'$size':'$replicas'}}}}
         pipeline.append(group)
         project = {'$project':{'name':'$_id', 'n_replicas':1, '_id':0}}
         pipeline.append(project)
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
         return data
+
+    def get_num_replicas(self, dataset_name):
+        """
+        Get the current number of replicas for one dataset
+        """
+        coll = 'dataset_data'
+        pipeline = list()
+        match = {'$match': {'name': dataset_name}}
+        pipeline.append(match)
+        group = {'$group':{'_id':'$name', 'n_replicas':{'$first':{'$size':'$replicas'}}}}
+        pipeline.append(group)
+        project = {'$project':{'n_replicas':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        return data[0]['n_replicas']
+
+    def update_replicas(self, subscriptions, deletions):
+        """
+        Maually update the replicas based on subscriptions and deletions
+        """
+        coll = 'dataset_data'
+        for subscription in subscriptions:
+            dataset_name = subscription[0]
+            site_name = subscription[1]
+            query = {'name':dataset_name}
+            data = {'$push':{'replicas':site_name}}
+            self.storage.update_data(coll=coll, query=query, data=data)
+
+        for deletion in deletions:
+            dataset_name = deletion[0]
+            site_name = deletion[1]
+            query = {'name':dataset_name}
+            data = {'$pull':{'replicas':site_name}}
+            self.storage.update_data(coll=coll, query=query, data=data)
+
+    def get_total_size(self, dataset_name):
+        """
+        Get the total storage used in the system
+        """
+        coll = 'dataset_data'
+        pipeline = list()
+        match = {'$match': {'name':dataset_name}}
+        pipeline.append(match)
+        group = {'$group':{'_id':'$name', 'n_replicas':{'$first':{'$size':'$replicas'}}}}
+        pipeline.append(group)
+        project = {'$project':{'n_replicas':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        n_replicas = data[0]['n_replicas']
+        size_gb = self.get_size(dataset_name)
+        total_size = n_replicas * size_gb
+        return total_size
+
+    def get_all_dataset_size(self, dataset_names):
+        """
+        Get the total storage used in the system
+        """
+        coll = 'dataset_data'
+        pipeline = list()
+        match = {'$match': {'name':{'$in':dataset_names}}}
+        pipeline.append(match)
+        group = {'$group':{'_id':'$name', 'size_bytes':{'$sum':'$size_bytes'}, 'n_replicas':{'$first':{'$size':'$replicas'}}}}
+        pipeline.append(group)
+        project = {'$project':{'size_bytes':1, 'n_replicas':1, '_id':1}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        sizes = dict()
+        for dataset in data:
+            sizes[dataset['_id']] = (float(dataset['size_bytes'])/10**12)*dataset['n_replicas']
+        return sizes
+
+    def get_all_site_size(self, site_names):
+        """
+        Get the total storage used in the system
+        """
+        sites_sizes = dict()
+        for site_name in site_names:
+            # get all datasets with a replica at the site and how many replicas it has
+            coll = 'dataset_data'
+            pipeline = list()
+            match = {'$match':{'replicas':site_name}}
+            pipeline.append(match)
+            project = {'$project':{'name':1, '_id':0}}
+            pipeline.append(project)
+            data = self.storage.get_data(coll=coll, pipeline=pipeline)
+            dataset_names = [dataset_data['name'] for dataset_data in data]
+            # get the popularity of the dataset and decide by number of replicas
+            coll = 'dataset_data'
+            pipeline = list()
+            match = {'$match': {'name':{'$in':dataset_names}}}
+            pipeline.append(match)
+            group = {'$group':{'_id':'$name', 'size_bytes':{'$sum':'$size_bytes'}, 'n_replicas':{'$first':{'$size':'$replicas'}}}}
+            pipeline.append(group)
+            project = {'$project':{'size_bytes':1, 'n_replicas':1, '_id':1}}
+            pipeline.append(project)
+            data = self.storage.get_data(coll=coll, pipeline=pipeline)
+            size = 0.0
+            for dataset in data:
+                size += (float(dataset['size_bytes'])/10**12)*dataset['n_replicas']
+            sites_sizes[site_name] = size
+        return sites_sizes
+
+    def get_total_storage(self):
+        """
+        Get the total storage used in the system
+        """
+        datasets = self.get_removed_db_datasets()
+        coll = 'dataset_data'
+        pipeline = list()
+        match = {'$match': {'name': {'$in':datasets}}}
+        pipeline.append(match)
+        group = {'$group':{'_id':'$name', 'size_bytes':{'$sum':'$size_bytes'}, 'n_replicas':{'$first':{'$size':'$replicas'}}}}
+        pipeline.append(group)
+        project = {'$project':{'name':'$_id', 'size_bytes':1, 'n_replicas':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        total_storage = 0.0
+        for dataset in data:
+            total_storage += (float(dataset['size_bytes'])/10**9)*dataset['n_replicas']
+        return total_storage

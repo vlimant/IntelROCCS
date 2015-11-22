@@ -109,22 +109,7 @@ class Preprocess(object):
         Get average popularity for 7 days beginning at date+7 days for dataset
         popularity = n_accesses*n_cpus
         """
-        start_date = start_date + datetime.timedelta(days=6)
-        end_date = start_date + datetime.timedelta(days=7)
-        coll = 'dataset_popularity'
-        pipeline = list()
-        match = {'$match':{'name':dataset_name}}
-        pipeline.append(match)
-        match = {'$match':{'date':{'$gte':start_date, '$lte':end_date}}}
-        pipeline.append(match)
-        group = {'$group':{'_id':'$name', 'avg_popularity':{'$avg': {'$multiply':['$n_accesses', '$n_cpus']}}}}
-        pipeline.append(group)
-        data = self.storage.get_data(coll=coll, pipeline=pipeline)
-        try:
-            y = log(int(data[0]['avg_popularity']))
-        except:
-            y = 0.0
-        return y
+        return self.popularity.get_average_popularity(dataset_name, start_date + datetime.timedelta(days=7))
 
 def main(argv):
     """

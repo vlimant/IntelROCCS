@@ -25,11 +25,11 @@ class BayesianRanking(GenericRanking):
         self.name = 'bayesian'
         for data_tier in self.data_tiers:
             try:
-                self.clf_trend[data_tier] = joblib.load(self.data_path + self.name + '_trend_' + data_tier + '.pkl')
-                self.clf_avg[data_tier] = joblib.load(self.data_path + self.name + '_avg_' + data_tier + '.pkl')
+                self.clf_trend[data_tier] = joblib.load(self.data_path + '/' + self.name + '_trend_' + data_tier + '.pkl')
+                self.clf_avg[data_tier] = joblib.load(self.data_path + '/' + self.name + '_avg_' + data_tier + '.pkl')
             except:
                 self.logger.info('%s classifier and regressor for data tier %s need to be trained', self.name, data_tier)
                 self.clf_trend[data_tier] = GaussianNB()
                 self.clf_avg[data_tier] = BayesianRidge()
-                self.train()
-                self.test()
+        self.train()
+        self.test()

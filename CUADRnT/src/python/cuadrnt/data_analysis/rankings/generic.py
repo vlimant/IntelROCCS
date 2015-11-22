@@ -43,14 +43,14 @@ class GenericRanking(object):
         Predict trend based on features
         """
         prediction = self.clf_trend[data_tier].predict(features)
-        return prediction
+        return prediction[0]
 
     def predict_avg(self, features, data_tier):
         """
         Predict trend based on features
         """
         prediction = self.clf_avg[data_tier].predict(features)
-        return prediction
+        return prediction[0]
 
     def train(self):
         """
@@ -71,8 +71,8 @@ class GenericRanking(object):
             t2 = datetime.datetime.utcnow()
             td = t2 - t1
             self.logger.info('Training %s for data tier %s took %s', self.name, data_tier, str(td))
-            joblib.dump(self.clf_trend[data_tier], self.data_path + self.name + '_trend_' + data_tier + '.pkl')
-            joblib.dump(self.clf_avg[data_tier], self.data_path + self.name + '_avg_' + data_tier + '.pkl')
+            joblib.dump(self.clf_trend[data_tier], self.data_path + '/' + self.name + '_trend_' + data_tier + '.pkl')
+            joblib.dump(self.clf_avg[data_tier], self.data_path + '/' + self.name + '_avg_' + data_tier + '.pkl')
 
     def test(self):
         """

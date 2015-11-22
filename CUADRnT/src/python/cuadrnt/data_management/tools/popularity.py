@@ -11,6 +11,7 @@ import datetime
 import Queue
 import threading
 from math import log
+import numpy as np
 
 # package modules
 # from cuadrnt.utils.utils import pop_db_timestamp_to_datetime
@@ -140,9 +141,96 @@ class PopularityManager(object):
                 data = {'$set':popularity_data}
                 self.storage.update_data(coll=coll, query=query, data=data, upsert=True)
 
+    def get_date_popularity(self, dataset_name, date):
+        """
+        Fetch all popularity data for dataset
+        """
+        coll = 'dataset_popularity'
+        pipeline = list()
+        match = {'$match':{'name':dataset_name, 'date':date}}
+        pipeline.append(match)
+        project = {'$project':{'n_cpus':1, 'n_accesses':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        try:
+            popularity = log(data[0]['n_cpus']*data[0]['n_accesses'])
+        except:
+            popularity = 0.0
+        return popularity
+
+    def get_all_dataset_popularity(self, dataset_names, date):
+        """
+        Fetch popularity for all datasets
+        """
+        start_date = date - datetime.timedelta(days=6)
+        end_date = date
+        coll = 'dataset_popularity'
+        pipeline = list()
+        match = {'$match':{'name':{'$in':dataset_names}, 'date':{'$gte':start_date, '$lte':end_date}}}
+        pipeline.append(match)
+        project = {'$project':{'name':1, 'n_cpus':1, 'n_accesses':1, '_id':0}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        popularity = dict()
+        for dataset in data:
+            try:
+                val = log(dataset['n_cpus']*dataset['n_accesses'])
+            except:
+                val = 0.0
+            try:
+                popularity[dataset['name']].append(val)
+            except:
+                popularity[dataset['name']] = [val]
+        for dataset_name in dataset_names:
+            if not (dataset_name in popularity):
+                popularity[dataset_name] = 0.0
+            else:
+                for i in range(0, 7):
+                    try:
+                        popularity[dataset_name][i]
+                    except:
+                        popularity[dataset_name].append(0.0)
+                popularity[dataset_name] = np.mean(popularity[dataset_name])
+        return popularity
+
+    def get_all_site_popularity(self, site_names, date):
+        """
+        Get popularity for site
+        """
+        sites_popularity = dict()
+        start_date = date - datetime.timedelta(days=6)
+        end_date = date
+        for site_name in site_names:
+            # get all datasets with a replica at the site and how many replicas it has
+            coll = 'dataset_data'
+            pipeline = list()
+            match = {'$match':{'replicas':site_name}}
+            pipeline.append(match)
+            project = {'$project':{'name':1, '_id':0}}
+            pipeline.append(project)
+            data = self.storage.get_data(coll=coll, pipeline=pipeline)
+            dataset_names = [dataset_data['name'] for dataset_data in data]
+            # get the popularity of the dataset and decide by number of replicas
+            coll = 'dataset_popularity'
+            pipeline = list()
+            match = {'$match':{'name':{'$in':dataset_names}, 'date':{'$gte':start_date, '$lte':end_date}}}
+            pipeline.append(match)
+            project = {'$project':{'name':1, 'n_cpus':1, 'n_accesses':1, '_id':0}}
+            pipeline.append(project)
+            data = self.storage.get_data(coll=coll, pipeline=pipeline)
+            popularity = 0.0
+            for entry in data:
+                try:
+                    popularity += log(entry['n_cpus']*entry['n_accesses'])
+                except:
+                    popularity += 0.0
+            performance = self.sites.get_performance(site_name)
+            sites_popularity[site_name] = popularity/performance
+        return sites_popularity
+
     def get_dataset_popularity(self, dataset_name):
         """
-        Get all popualrity data for a dataset
+        Get all popularity data for a dataset
         """
         coll = 'dataset_popularity'
         pipeline = list()
@@ -155,7 +243,7 @@ class PopularityManager(object):
 
     def get_average_popularity(self, dataset_name, date):
         """
-        Get all popualrity data for a dataset
+        Get all popularity data for a dataset
         """
         start_date = date - datetime.timedelta(days=7)
         end_date = date - datetime.timedelta(days=1)
@@ -165,34 +253,46 @@ class PopularityManager(object):
         pipeline.append(match)
         match = {'$match':{'date':{'$gte':start_date, '$lte':end_date}}}
         pipeline.append(match)
-        group = {'$group':{'_id':'$name', 'avg_popularity':{'$avg': {'$multiply':['$n_accesses', '$n_cpus']}}}}
-        pipeline.append(group)
         data = self.storage.get_data(coll=coll, pipeline=pipeline)
-        try:
-            avg = log(int(data[0]['avg_popularity']))
-        except:
-            avg = 0.0
+        pops = list()
+        for i in range(0, 7):
+            try:
+                pops.append(log(float(data[i]['n_accesses']*data[i]['n_cpus'])))
+            except:
+                pops.append(0.0)
+        avg = np.mean(pops)
         return avg
 
-    def get_features(self,dataset_name, date):
+    def get_features(self,dataset_names, date):
         """
         Get machine learning features which are seven days of popularity
         """
-        features = list()
-        start_date = date
-        end_date = start_date - datetime.timedelta(days=7)
-        for date in daterange(start_date, end_date):
-            coll = 'dataset_popularity'
-            pipeline = list()
-            match = {'$match':{'name':dataset_name}}
-            pipeline.append(match)
-            match = {'$match':{'date':date}}
-            pipeline.append(match)
-            project = {'$project':{'n_accesses':1, 'n_cpus':1, '_id':0}}
-            pipeline.append(project)
-            data = self.storage.get_data(coll=coll, pipeline=pipeline)
-            try:
-                features.append(log(int(data[0]['n_accesses']))*log(int(data[0]['n_cpus'])))
-            except:
-                features.append(0.0)
-        return features
+        dataset_features = dict()
+        end_date = date
+        start_date = end_date - datetime.timedelta(days=7)
+        coll = 'dataset_popularity'
+        pipeline = list()
+        match = {'$match':{'name': {'$in':dataset_names}, 'date':{'$gte':start_date, '$lte':end_date}}}
+        pipeline.append(match)
+        group = {'$group':{'_id':{'name':'$name', 'date':'$date'}, 'popularity':{'$sum':{'$multiply':['$n_accesses', '$n_cpus']}}}}
+        pipeline.append(group)
+        group = {'$group':{'_id':'$_id.name', 'features': {'$push':{'date':'$_id.date', 'popularity':'$popularity'}}}}
+        pipeline.append(group)
+        project = {'$project':{'features':1, '_id':1}}
+        pipeline.append(project)
+        data = self.storage.get_data(coll=coll, pipeline=pipeline)
+        for dataset in data:
+            dataset_name = dataset['_id']
+            tmp_features = dict()
+            for feat in dataset['features']:
+                try:
+                    tmp_features[feat['date']] = log(feat['popularity'])
+                except:
+                    tmp_features[feat['date']] = 0.0
+            dataset_features[dataset_name] = list()
+            for date in daterange(start_date, end_date):
+                try:
+                    dataset_features[dataset_name].append(tmp_features[date])
+                except:
+                    dataset_features[dataset_name].append(0)
+        return dataset_features
