@@ -348,7 +348,7 @@ def main(argv):
                 date = today - datetime.timedelta(days=k)
                 rocker_board.store_data(date)
                 rocker_board.fetch_data(date)
-                #rocker_board.start(date)
+                rocker_board.start(date)
     rocker_board.export_data()
 
 if __name__ == "__main__":
