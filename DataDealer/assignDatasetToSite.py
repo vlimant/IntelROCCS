@@ -487,7 +487,7 @@ def chooseMatchingSite(tier2Sites,nSites,sizeGb,debug):
         nTrials += 1
     return sites,quotas,lastCps
 
-def submitSubscriptionRequests(sites,datasets=[],debug=0):
+def submitSubscriptionRequests(sites,datasets=[],debug=0, group='AnalysisOps'):
     # submit the subscription requests
 
     # keep track of the return code
@@ -515,9 +515,9 @@ def submitSubscriptionRequests(sites,datasets=[],debug=0):
     for site in sites:
         if debug>-1:
             print " --> phedex.subscribe(node=%s,data=....,comments=%s', \ "%(site,message)
-            print "                      group='AnalysisOps',instance='prod')"
+            print "                      group=%s,instance='prod')"%group
 
-        check,response = phedex.subscribe(node=site,data=data,comments=message,group='AnalysisOps',
+        check,response = phedex.subscribe(node=site,data=data,comments=message,group=group,
                           instance='prod')
         if check:
             rc = 1
@@ -527,14 +527,13 @@ def submitSubscriptionRequests(sites,datasets=[],debug=0):
 
     return rc
 
-def submitUpdateSubscriptionRequest(sites,datasets=[],debug=0):
+def submitUpdateSubscriptionRequest(sites,datasets=[],debug=0,group='AnalysisOps'):
     # submit the request for an update of the subscription
 
     # keep track of potential failures
     rc = 0
 
     # check our paramters for phedex call
-    group  = 'AnalysisOps'
     # make sure we have datasets to subscribe
     dataset = 'EMPTY'
     if len(datasets) < 1:
@@ -560,187 +559,10 @@ def submitUpdateSubscriptionRequest(sites,datasets=[],debug=0):
             rc = 1
             print " ERROR - phedexApi.updateSubscription failed for site: " + site
             print response
+            print time.asctime()
             continue
 
     return rc
-
-def assignOneDataset(dataset,nCopies,expectedSizeGb,destination,exe=0,debug=0):
-    # make assignment of exatly one dataset, the status returned is 0 if all worked, 1 is it did not
-    # work for whatever reason (there will be a printout)
-
-    isMiniAod = False
-
-    # Say what dataset we are looking at
-    #-----------------------------------
-    
-    print '\n DATASET: ' + dataset
-    f = dataset.split("/")
-    if len(f) > 3:
-        tier = f[3]
-        if 'MINIAOD' in tier:
-            print ' MINIAOD* identified, consider extra T2_CH_CERN copy.'
-            isMiniAod = True
-    
-    # size of provided dataset
-    #-------------------------
-    
-    # instantiate an API
-    dbsapi = DbsApi(url='https://cmsweb.cern.ch/dbs/prod/global/DBSReader')
-    
-    # first test whether dataset is valid
-    dbsList = dbsapi.listDatasets(dataset = dataset, dataset_access_type = 'VALID')
-    datasetInvalid = False
-    if dbsList == []:
-        datasetInvalid = True
-        print ' ERROR - Dataset does not exist or is invalid. EXIT!\n'
-        return 1
-    
-    # determine size and number of files
-    size = str(sum([block['file_size'] for block in dbsapi.listBlockSummaries(dataset = dataset)]))+'UB'
-    sizeGb = convertSizeToGb(size)
-    
-    # in case this is an open subscription we need to adjust sizeGb to the expected size
-    if expectedSizeGb > 0:
-        sizeGb = expectedSizeGb
-    
-    print ' SIZE:    %.1f GB'%(sizeGb)
-    
-    # prepare subscription list
-    datasets = []
-    datasets.append(dataset)
-    
-    
-    # first make sure this dataset is not owned by DataOps group anymore at the Tier-1 site(s)
-    #-----------------------------------------------------------------------------------------
-    
-    tier1Sites = findExistingSubscriptions(dataset,'DataOps','T1_*_Disk',debug)
-    if debug>0:
-        print ' Re-assign all Tier-1 copies from DataOps to AnalysisOps space.'
-    
-    if len(tier1Sites) > 0:
-        print '\n Resident in full under DataOps group on the following Tier-1 disks:'
-        for tier1Site in tier1Sites:
-            print ' --> ' + tier1Site
-        print ''
-    
-        # update subscription at Tier-1 sites
-        if exe:
-            # make AnalysisOps the owner of all copies at Tier-1 site(s)
-            rc = submitUpdateSubscriptionRequest(tier1Sites,datasets,debug)
-            if rc != 0:
-                print ' ERROR - Could not update subscription (DataOps->AnalysisOps) at Tier-1. EXIT!'
-                return 1
-        else:
-            print '\n -> WARNING: not doing anything .... please use  --exec  option.\n'
-    else:
-        print '\n No Tier-1 full copies of this dataset in DataOps space.'
-    
-    tier2Sites = findExistingSubscriptions(dataset,'DataOps','T2_*',debug)
-    
-    if debug>0:
-        print ' Re-assign all Tier-2 copies from DataOps to AnalysisOps space.'
-    if len(tier2Sites) > 0:
-        print '\n Resident in full under DataOps group on the following Tier-2 disks:'
-        for tier2Site in tier2Sites:
-            print ' --> ' + tier2Site
-        print ''
-    
-        # update subscription at Tier-1 sites
-        if exe:
-            # make AnalysisOps the owner of all copies at Tier-2 site(s)
-            rc = submitUpdateSubscriptionRequest(tier2Sites,datasets,debug)
-            if rc != 0:
-                print ' ERROR - Could not update subscription (DataOps->AnalysisOps) at Tier-2. EXIT!'
-                return 1
-        else:
-            print '\n -> WARNING: not doing anything .... please use  --exec  option.\n'
-    else:
-        print '\n No Tier-2 full copies of this dataset in DataOps space.'
-    
-    
-    # has the dataset already been subscribed?
-    #-----------------------------------------
-    # - no test that the complete dataset has been subscribed (could be just one block?)
-    # - we test all Tier2s and check there is at least one block subscribed no completed bit required
-    #
-    # --> need to verify this is sufficient
-    
-    siteNames = findExistingSubscriptions(dataset,'AnalysisOps','T2_*',debug)
-    nAdditionalCopies = nCopies - len(siteNames)
-    
-    if len(siteNames) >= nCopies:
-        print '\n Already subscribed on Tier-2:'
-        for siteName in siteNames:
-            print ' --> ' + siteName
-    
-        if not isMiniAod:
-            print '\n SUCCESS - The job is done already: EXIT!\n'
-            return 0
-    else:
-        print ''
-        print ' Only %d copies found in AnalysisOps space.'%(len(siteNames))
-        for siteName in siteNames:
-            print ' --> ' + siteName
-        print ' Requested %d copies at Tier-2.'%(nCopies)
-        print ' --> will find %d more sites for subscription.\n'%(nAdditionalCopies)
-    
-    
-    # find a sufficient matching site
-    #--------------------------------
-    
-    # find all dynamically managed sites
-    tier2Sites = getActiveSites(debug)
-    
-    # remove the already used sites
-    for siteName in siteNames:
-        if debug>0:
-            print ' Removing ' + siteName
-        try:
-            tier2Sites.remove(siteName)
-        except:
-            if debug>0:
-                print ' Site is not in list: ' + siteName
-    
-    # choose a site randomly and exclude sites that are too small
-    
-    sites,quotas,lastCps = chooseMatchingSite(tier2Sites,nAdditionalCopies,sizeGb,debug)
-    
-    if destination:
-        print " INFO - overriding destination with ",destination
-        sites = destination
-    
-    if not exe:
-        print ''
-        print ' SUCCESS - Found requested %d matching Tier-2 sites'%(len(sites))
-        for i in range(len(sites)):
-            print '           - %-20s (quota: %.1f TB lastCp: %.1f TB)'\
-                %(sites[i],quotas[i]/1000.,lastCps[i]/1000.)
-    
-    # make phedex subscription
-    #-------------------------
-    
-    # subscribe them
-    if exe:
-        # make subscriptions to Tier-2 site(s)
-        rc = submitSubscriptionRequests(sites,datasets)
-        if rc != 0:
-            print ' ERROR - Could not make subscription at Tier-2. EXIT!'
-            return 1
-    
-        # make special subscription for /MINIAOD* to T2_CH_CERN
-        if isMiniAod:
-            cern = [ 'T2_CH_CERN' ]
-            submitSubscriptionRequests(cern,datasets)    
-            if rc != 0:
-                print ' ERROR - Could not make subscription at CERN Tier-2. EXIT!'
-                return 1
-    
-    else:
-        print '\n -> WARNING: not doing anything .... please use  --exec  option.\n'
-        if isMiniAod:
-            print ' INFO: extra copy to T2_CH_CERN activated.'
-    
-    return status
 
 #===================================================================================================
 #  M A I N
@@ -773,6 +595,8 @@ nCopies = 1
 destination = []
 exe = False
 expectedSizeGb = -1
+isMiniAod = False
+group='AnalysisOps'
 
 # Read new values from the command line
 for opt, arg in opts:
@@ -791,21 +615,177 @@ for opt, arg in opts:
         debug = int(arg)
     if opt == "--exec":
         exe = True
+    if opt == "--group":
+        group = arg
+
+## in the meantime in casablanca
+#debug=1
 
 # inspecting the local setup
 #---------------------------
 
+start_time = time.mktime(time.gmtime())
 testLocalSetup(dataset,debug)
 
-# loop through the list of given datasets (all parameters are carried through)
-status = 0 
-for dset in dataset.split(","):
-    # adjust for compact dataset format
-    if dset[0] != '/':
-        dset = '/' + dset.replace('+','/')
-    print ' Work on dataset: ' + dset
-    status = assignOneDataset(dset,nCopies,expectedSizeGb,destination,exe,debug)
-    
-    print '\n Status of assignment: %d (%s)\n'%(status,dset)
+# Say what dataset we are looking at
+#-----------------------------------
 
-sys.exit(0)
+print '\n DATASET: ' + dataset
+f = dataset.split("/")
+if len(f) > 3:
+    tier = f[3]
+    if 'MINIAOD' in tier:
+        print ' MINIAOD* identified, consider extra T2_CH_CERN copy.'
+        isMiniAod = True
+
+# size of provided dataset
+#-------------------------
+
+# instantiate an API
+dbsapi = DbsApi(url='https://cmsweb.cern.ch/dbs/prod/global/DBSReader')
+
+# first test whether dataset is valid
+dbsList = dbsapi.listDatasets(dataset = dataset, dataset_access_type = 'VALID')
+datasetInvalid = False
+if dbsList == []:
+    datasetInvalid = True
+    print ' Dataset does not exist or is invalid. Exit now!\n'
+    sys.exit(1)
+
+# determine size and number of files
+size = str(sum([block['file_size'] for block in dbsapi.listBlockSummaries(dataset = dataset)]))+'UB'
+sizeGb = convertSizeToGb(size)
+
+# in case this is an open subscription we need to adjust sizeGb to the expected size
+if expectedSizeGb > 0:
+    sizeGb = expectedSizeGb
+
+print ' SIZE:    %.1f GB'%(sizeGb)
+
+# prepare subscription list
+datasets = []
+datasets.append(dataset)
+
+
+# first make sure this dataset is not owned by DataOps group anymore at the Tier-1 site(s)
+#-----------------------------------------------------------------------------------------
+
+tier1Sites = findExistingSubscriptions(dataset,'DataOps','T1_*_Disk',debug)
+if debug>0:
+    print ' Re-assign all Tier-1 copies from DataOps to AnalysisOps space.'
+if len(tier1Sites) > 0:
+    print '\n Resident in full under DataOps group on the following Tier-1 disks:'
+    for tier1Site in tier1Sites:
+        print ' --> ' + tier1Site
+    print ''
+
+    # update subscription at Tier-1 sites
+    if exe:
+        # make AnalysisOps the owner of all copies at Tier-1 site(s)
+        rc = submitUpdateSubscriptionRequest(tier1Sites,datasets,debug)
+        if rc != 0:
+            sys.exit(1)
+    else:
+        print '\n -> WARNING: not doing anything .... please use  --exec  option.\n'
+else:
+    print '\n No Tier-1 full copies of this dataset in DataOps space.'
+tier2Sites = findExistingSubscriptions(dataset,'DataOps','T2_*',debug)
+if debug>0:
+    print ' Re-assign all Tier-2 copies from DataOps to AnalysisOps space.'
+if len(tier2Sites) > 0:
+    print '\n Resident in full under DataOps group on the following Tier-2 disks:'
+    for tier2Site in tier2Sites:
+        print ' --> ' + tier2Site
+    print ''
+
+    # update subscription at Tier-1 sites
+    if exe:
+        # make AnalysisOps the owner of all copies at Tier-1 site(s)
+        rc = submitUpdateSubscriptionRequest(tier2Sites,datasets,debug, group=group)
+        if rc != 0:
+            sys.exit(1)
+    else:
+        print '\n -> WARNING: not doing anything .... please use  --exec  option.\n'
+else:
+    print '\n No Tier-2 full copies of this dataset in DataOps space.'
+
+
+# has the dataset already been subscribed?
+#-----------------------------------------
+# - no test that the complete dataset has been subscribed (could be just one block?)
+# - we test all Tier2s and check there is at least one block subscribed no completed bit required
+#
+# --> need to verify this is sufficient
+
+siteNames = findExistingSubscriptions(dataset,'AnalysisOps','T2_*',debug)
+nAdditionalCopies = nCopies - len(siteNames)
+
+if len(siteNames) >= nCopies:
+    print '\n Already subscribed on Tier-2:'
+    for siteName in siteNames:
+        print ' --> ' + siteName
+
+    if not isMiniAod:
+        print '\n The job is done already: EXIT!\n'
+        sys.exit(0)
+else:
+    print ' Requested %d copies at Tier-2. Only %d copies found.'%(nCopies,len(siteNames))
+    print ' --> will find %d more sites for subscription.\n'%(nAdditionalCopies)
+
+
+# find a sufficient matching site
+#--------------------------------
+
+# find all dynamically managed sites
+tier2Sites = getActiveSites(debug)
+
+# remove the already used sites
+for siteName in siteNames:
+    if debug>0:
+        print ' Removing ' + siteName
+    try:
+        tier2Sites.remove(siteName)
+    except:
+        if debug>0:
+            print ' Site is not in list: ' + siteName
+
+# choose a site randomly and exclude sites that are too small
+
+sites,quotas,lastCps = chooseMatchingSite(tier2Sites,nAdditionalCopies,sizeGb,debug)
+
+if destination:
+    print "overriding destination with",destination
+    sites = destination
+
+if not exe:
+    print ''
+    print ' SUCCESS - Found requested %d matching Tier-2 sites'%(len(sites))
+    for i in range(len(sites)):
+        print '           - %-20s (quota: %.1f TB lastCp: %.1f TB)'\
+            %(sites[i],quotas[i]/1000.,lastCps[i]/1000.)
+
+# make phedex subscription
+#-------------------------
+
+# subscribe them
+if exe:
+    # make subscriptions to Tier-2 site(s)
+    rc = submitSubscriptionRequests(sites,datasets, group)
+    if rc != 0:
+        sys.exit(1)
+
+    # make special subscription for /MINIAOD* to T2_CH_CERN
+    if isMiniAod:
+        cern = [ 'T2_CH_CERN' ]
+        submitSubscriptionRequests(cern,datasets, group)    
+        if rc != 0:
+            sys.exit(1)
+
+else:
+    print '\n -> WARNING: not doing anything .... please use  --exec  option.\n'
+    if isMiniAod:
+        print ' INFO: extra copy to T2_CH_CERN activated.'
+
+stop_time = time.mktime(time.gmtime())
+
+print "total elapsed",stop_time-start_time
