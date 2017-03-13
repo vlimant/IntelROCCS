@@ -8,12 +8,6 @@
 # Injection of so called open datasets (datasets that are not yet completed and will be growing) is
 # problematic as the size of the dataset is not correct in the database. To solve this problem an
 # expected dataset size can be specified to overwrite this information (ex. --expectedSizeGb=1000). 
-#
-# The feature to assign a fixed location(s) has been added to the script to allow for an intelligent
-# process to distribute the data on a non-random basis. This feature has to be used with care
-# because usual an analysis of the space situation will in most cases select the same site and a
-# site can quickly get overloaded. The intelligent script behind this must make sure the sites are
-# properly chosen to avoid lopsided distribution.
 # 
 # Failures of any essential part of this assignment will lead to a non-zero return code. For now the
 # failure return code is always 1.
@@ -31,7 +25,7 @@
 # Unit test:
 #   ./assignDatasetToSite.py --nCopies=2 --dataset=/DoubleElectron/Run2012A-22Jan2013-v1/AOD
 #---------------------------------------------------------------------------------------------------
-import os, sys, subprocess, getopt, re, random, urllib, urllib2, httplib, json
+import os, sys, subprocess, getopt, re, random, urllib, urllib2, httplib, json, time
 from dbs.apis.dbsClient import DbsApi
 
 #===================================================================================================
@@ -74,16 +68,20 @@ class phedexApi:
         1 -- Status, 0 = everything went well, 1 = something went wrong
         2 -- IF status == 0 : HTTP response ELSE : Error message
         """
+        #print "call",time.asctime()
         data = urllib.urlencode(values)
+        #print "encode",time.asctime()
         opener = urllib2.build_opener(HTTPSGridAuthHandler())
+        #print "auth",time.asctime()
         request = urllib2.Request(url, data)
+        #print "request",time.asctime()
         try:
             response = opener.open(request)
         except urllib2.HTTPError, e:
-            return 1, " ERROR - urllib2.HTTPError %s \n  URL: %s\n  VALUES: %s"%\
-                   (e.read,str(url),str(values))
+            return 1, " Error - urllib2.HTTPError %s \n  URL: %s\n  VALUES: %s"%\
+                   (e.read(),str(url),str(values))
         except urllib2.URLError, e:
-            return 1, " ERROR - urllib2.URLError %s \n  URL: %s\n  VALUES: %s"%\
+            return 1, " Error - urllib2.URLError %s \n  URL: %s\n  VALUES: %s"%\
                    (e.args,str(url),str(values))
         return 0, response
 
@@ -109,13 +107,13 @@ class phedexApi:
         data  -- json structure if json format, xml structure if xml format
         """
         if not (dataset or block or fileName):
-            return 1, " ERROR - Need to pass at least one of dataset/block/fileName"
+            return 1, " Error - Need to pass at least one of dataset/block/fileName"
         values = { 'dataset' : dataset, 'block' : block, 'file' : fileName,
                    'level' : level, 'create_since' : createSince }
         dataURL = urllib.basejoin(self.phedexBase, "%s/%s/data"%(format, instance))
         check, response = self.phedexCall(dataURL, values)
         if check:
-            return 1, " ERROR - Data call failed"
+            return 1, " Error - Data call failed"
         if format == "json":
             try:
                 data = json.load(response)
@@ -123,7 +121,7 @@ class phedexApi:
                 # This usually means that PhEDEx didn't like the URL
                 return 1, " ERROR - ValueError in call to url %s : %s"%(dataURL, str(e))
             if not data:
-                return 1, " ERROR - no json data available"
+                return 1, " Error - no json data available"
         else:
             data = response.read()
         return 0, data
@@ -167,17 +165,17 @@ class phedexApi:
         xml   -- the converted data now represented as an xml structure
         """
         if not datasets:
-            return 1, " ERROR - need to pass at least one of dataset."
+            return 1, " Error - need to pass at least one of dataset."
         xml = '<data version="2">'
         xml = '%s<%s name="https://cmsweb.cern.ch/dbs/%s/global/DBSReader">'\
               % (xml, 'dbs', instance)
         for dataset in datasets:
             check, response = self.data(dataset=dataset, level='file', instance=instance)
             if check:
-                return 1, " ERROR"
+                return 1, " Error"
             data = response.get('phedex').get('dbs')
             if not data:
-                return 1, " ERROR"
+                return 1, " Error"
             xml = "%s<%s" % (xml, 'dataset')
             data = data[0].get('dataset')
             xml = self.parse(data[0], xml)
@@ -195,7 +193,7 @@ class phedexApi:
         Set up subscription call to PhEDEx API.
         """
         if not (node and data):
-            return 1, "ERROR - subscription: node and data needed."
+            return 1, "Error - subscription: node and data needed."
         values = { 'node' : node, 'data' : data, 'level' : level, 'priority' : priority,
                    'move' : move, 'static' : static, 'custodial' : custodial, 'group' : group,
                    'time_start' : timeStart, 'request_only' : requestOnly, 'no_mail' : noMail,
@@ -203,7 +201,7 @@ class phedexApi:
         subscriptionURL = urllib.basejoin(self.phedexBase, "%s/%s/subscribe" % (format, instance))
         check, response = self.phedexCall(subscriptionURL, values)
         if check:
-            return 1, "ERROR - subscription: check not zero"
+            return 1, "Error - subscription: check not zero"
         return 0, response
 
     def delete(self, node='', data='', level='dataset', rmSubscriptions='y',
@@ -213,13 +211,13 @@ class phedexApi:
         Set up subscription call to PhEDEx API.
         """
         if not (node and data):
-            return 1, " ERROR - need to pass both node and data"
+            return 1, " Error - need to pass both node and data"
         values = { 'node' : node, 'data' : data, 'level' : level,
                    'rm_subscriptions' : rmSubscriptions, 'comments' : comments }
         deleteURL = urllib.basejoin(self.phedexBase, "%s/%s/delete" % (format, instance))
         check, response = self.phedexCall(deleteURL, values)
         if check:
-            return 1, " ERROR - self.phedexCall with response: " + response
+            return 1, " Error - self.phedexCall with response: " + response
         return 0, response
     
     def updateSubscription(self, node='', dataset='', group='AnalysisOps',
@@ -230,7 +228,7 @@ class phedexApi:
         """
         name = "updatesubscription"
         if not (node and dataset):
-            return 1, "ERROR - %s: node and dataset are needed."%(name)
+            return 1, "Error - %s: node and dataset are needed."%(name)
         values = {'node' : node, 'dataset' : dataset, 'group' : group}
         url = urllib.basejoin(self.phedexBase, "%s/%s/%s" % (format,instance,name))
         check, response = self.phedexCall(url, values)
@@ -271,11 +269,9 @@ class HTTPSGridAuthHandler(urllib2.HTTPSHandler):
 #  H E L P E R S
 #===================================================================================================
 def testLocalSetup(dataset,debug=0):
-    # The local setup needs a number of things to be present. Make sure all is there, or complain.
-
     # check the input parameters
     if dataset == '':
-        print ' ERROR - no dataset specified. EXIT!\n'
+        print ' Error - no dataset specified. EXIT!\n'
         print usage
         sys.exit(1)
 
@@ -294,11 +290,10 @@ def testLocalSetup(dataset,debug=0):
 	    validProxy = True
 
     if not validProxy:
-        print ' ERROR - no X509_USER_PROXY, please check. EXIT!'
+        print ' Error - no X509_USER_PROXY, please check. EXIT!'
         sys.exit(1)
 
 def convertSizeToGb(sizeTxt):
-    # Size text comes in funny shapes. Make sure to convert it properly.
 
     # first make sure string has proper basic format
     if len(sizeTxt) < 3:
@@ -328,47 +323,60 @@ def convertSizeToGb(sizeTxt):
     return sizeGb
 
 def findExistingSubscriptions(dataset,group='AnalysisOps',sitePattern='T2*',debug=0):
-    # Find existing subscriptions of full datasets at sites matching the pattern
-
-    # speak with phedex interface
-    conn = httplib.HTTPSConnection('cmsweb.cern.ch', \
-                                   cert_file = os.getenv('X509_USER_PROXY'), \
-                                   key_file = os.getenv('X509_USER_PROXY'))
-    subsc = '/phedex/datasvc/json/prod/subscriptions'
-    r1 = conn.request("GET",subsc + '?group=%s&node=%s&block=%s%%23*&collapse=y' \
-                          %(group,sitePattern,dataset))
-    r2 = conn.getresponse()
+    conn  =  httplib.HTTPSConnection('cmsweb.cern.ch', cert_file = os.getenv('X509_USER_PROXY'), key_file = os.getenv('X509_USER_PROXY'))
+    r1=conn.request("GET",'/phedex/datasvc/json/prod/subscriptions?group=%s&node=%s&block=%s%%23*&collapse=y'%(group,sitePattern,dataset))
+    r2=conn.getresponse()
     result = json.loads(r2.read())['phedex']
-
-    # loop overall datasets to find all sites the given dataset is on
     siteNames = []
+    #print result['dataset']
     for dataset in result['dataset']:
-
-        # make sure this is a subscription
-        if not 'subscription' in dataset:
-            continue
-
+        if not 'subscription' in dataset: continue
         for sub in dataset['subscription']:
-
-            # make sure this is a full dataset subscription
-            if sub['level'] != "DATASET":
-                continue
+            if sub['level'] != "DATASET" : continue
             
-            # this is one of the sites the dataset is on
             siteName = sub['node']
-
-            # make sure not to enter the site twice
             if siteName in siteNames: 
-                if debug:
+                if debug>0:        
                     print ' Site already in list. Skip!'
             else:
                 siteNames.append( sub['node'] )
+    return siteNames
+                   
+
+"""    webServer = 'https://cmsweb.cern.ch/'
+    phedexBlocks = 'phedex/datasvc/xml/prod/blockreplicas?subscribed=y&group=%s&node=%s&dataset=%s'\
+               %(group,sitePattern,dataset)
+    url = '"'+webServer+phedexBlocks + '"'
+    cmd = 'curl -k -H "Accept: text/xml" ' + url + ' 2> /dev/null'
+
+    #cert = os.environ.get('X509_USER_PROXY')
+    #cmd = 'curl --cert ' + cert + ' -k -H "Accept: text/xml" ' + url + ' 2> /dev/null'
+
+    if debug > 1:
+        print ' Access phedexDb: ' + cmd
+
+    # setup the shell command
+    siteNames = []
+    for line in subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE).stdout.readlines():
+        if debug > 1:
+            print ' LINE: ' + line
+        # find the potential T2s
+        try:
+            sublines = re.split("<replica\ ",line)
+            for subline in sublines[1:]:
+                siteName = (re.findall(r"node='(\S+)'",subline))[0]
+                if siteName in siteNames:
+                    if debug>0:
+                        print ' Site already in list. Skip!'
+                else:
+                    siteNames.append(siteName)
+        except:
+            siteName = ''
 
     return siteNames
+"""
 
 def getActiveSites(debug=0):
-    # find the list of sites to consider for subscription
-
     # hardcoded fallback
     tier2Base = [ 'T2_AT_Vienna','T2_BR_SPRACE','T2_CH_CSCS','T2_DE_DESY','T2_DE_RWTH',
                   'T2_ES_CIEMAT','T2_ES_IFCA',
@@ -384,6 +392,7 @@ def getActiveSites(debug=0):
     sites = []
 
     # get the active site list
+    #cmd  = 'wget http://t3serv001.mit.edu/~cmsprod/IntelROCCS/Detox/ActiveSites.txt'
     cmd  = 'wget http://t3serv001.mit.edu/~cmsprod/IntelROCCS/Detox/SitesInfo.txt'
     cmd += ' -O - 2> /dev/null | grep -v "#" | grep T2_ | tr -s " "'
     for line in subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE).stdout.readlines():
