@@ -456,9 +456,8 @@ def chooseMatchingSite(tier2Sites,nSites,sizeGb,debug):
 
     nTrials = 0
 
+    fraction_usable_quota = 0.1
     while len(sites) < nSites:
-        # we should put into the random choice the size of the site to ensure larger sites to
-        # be hit more often (NEXT PROJECT)
         iRan = random.randint(0,len(tier2Sites)-1)
         site = tier2Sites[iRan]
         # not elegant or reliable (should use database directly)
@@ -479,18 +478,20 @@ def chooseMatchingSite(tier2Sites,nSites,sizeGb,debug):
             f = line.split(' ')
             lastCp = float(f[-1]) * 1000.  # make sure it is GB
 
-        if sizeGb < 0.1*quota:
+        if sizeGb < fraction_usable_quota*quota:
             sites.append(site)
             quotas.append(quota)
             lastCps.append(lastCp)
             tier2Sites.remove(site)
+        else:
+            fraction_usable_quota += 0.05
 
         if debug > 0:
-            print ' Trying to fit %.1f GB into Tier-2 [%d]: %s with quota of %.1f GB (use 0.1 max)'%\
-                  (sizeGb,iRan,site,quota)
+            print ' Trying to fit %.1f GB into Tier-2 [%d]: %s with quota of %.1f GB (use %.3f max)'%\
+                  (sizeGb,iRan,site,quota,fraction_usable_quota)
 
         if nTrials > 20:
-            print ' ERROR - not enough matching sites could be found. Dataset too big? EXIT!'
+            print ' Error - not enough matching sites could be found. Dataset too big? EXIT!'
             sys.exit(1)
 
         nTrials += 1
